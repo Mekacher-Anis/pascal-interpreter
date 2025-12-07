@@ -1,65 +1,64 @@
-use std::io::{self, Write};
+use std::env;
+use std::fs;
+use std::io;
 
 mod ast;
 mod interpreter;
 mod lexer;
 mod parser;
-mod postfix_translator;
 mod token;
+mod visualizer;
 
 use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
+use visualizer::Visualizer;
 
-use crate::postfix_translator::PostfixTranslator;
 
 fn main() -> io::Result<()> {
-    loop {
-        print!("> ");
-        io::stdout().flush()?;
+    let args: Vec<String> = env::args().collect();
 
-        let mut buffer = String::new();
-        let bytes_read = io::stdin().read_line(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-
-        if buffer.trim().is_empty() {
-            continue;
-        }
-        if buffer.trim() == "/q" {
-            break;
-        }
-
-        let lexer = Lexer::new(&buffer);
-        let mut parser = match Parser::new(lexer) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                continue;
-            }
-        };
-
-        let ast = match parser.parse() {
-            Ok(ast) => ast,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                continue;
-            }
-        };
-
-        let interpreter = Interpreter::new();
-        match interpreter.interpret(&ast) {
-            Ok(result) => println!("{}", result),
-            Err(e) => eprintln!("Error: {}", e),
-        }
-
-        let translator = PostfixTranslator::new();
-        match translator.translate(&ast) {
-            Ok(result) => println!("Translated: '{}'", result),
-            Err(e) => eprintln!("Error: {}", e),
-        }
+    if args.len() != 2 {
+        eprintln!("Usage: {} <filename>", args[0]);
+        std::process::exit(1);
     }
+
+    let filename = &args[1];
+    let content = fs::read_to_string(filename)?;
+
+    let lexer = Lexer::new(&content);
+    let mut parser = match Parser::new(lexer) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let ast = match parser.parse() {
+        Ok(ast) => ast,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let mut visualizer = Visualizer::new();
+    let svg_content = visualizer.generate_svg(&ast);
+    if let Err(e) = std::fs::write("ast.svg", svg_content) {
+        eprintln!("Error writing SVG: {}", e);
+    } else {
+        println!("AST visualization saved to ast.svg");
+    }
+
+    let mut interpreter = Interpreter::new();
+    match interpreter.interpret(&ast) {
+        Ok(result) => println!("{}", result),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+    // Pretty print interpreter variables after execution completes
+    interpreter.pretty_print_variables();
+
     Ok(())
 }
 
@@ -71,7 +70,7 @@ mod tests {
         let lexer = Lexer::new(text);
         let mut parser = Parser::new(lexer).unwrap();
         let ast = parser.parse().unwrap();
-        let interpreter = Interpreter::new();
+        let mut interpreter = Interpreter::new();
         interpreter.interpret(&ast).unwrap()
     }
 

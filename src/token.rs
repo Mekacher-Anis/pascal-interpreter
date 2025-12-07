@@ -9,6 +9,12 @@ pub enum Token {
     Slash,
     LParenthesis,
     RParenthesis,
+    Begin,
+    End,
+    Dot,
+    Id(String),
+    Assign,
+    Semi,
     Eof,
 }
 
@@ -23,6 +29,12 @@ impl fmt::Display for Token {
             Token::Eof => write!(f, "EOF"),
             Token::LParenthesis => write!(f, "("),
             Token::RParenthesis => write!(f, ")"),
+            Token::Begin => write!(f, "BEGIN"),
+            Token::End => write!(f, "END"),
+            Token::Dot => write!(f, "."),
+            Token::Id(name) => write!(f, "{name}"),
+            Token::Assign => write!(f, ":="),
+            Token::Semi => write!(f, "SEMI"),
         }
     }
 }
