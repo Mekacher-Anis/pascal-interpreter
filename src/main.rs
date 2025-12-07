@@ -4,11 +4,14 @@ mod ast;
 mod interpreter;
 mod lexer;
 mod parser;
+mod postfix_translator;
 mod token;
 
 use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
+
+use crate::postfix_translator::PostfixTranslator;
 
 fn main() -> io::Result<()> {
     loop {
@@ -48,6 +51,12 @@ fn main() -> io::Result<()> {
         let interpreter = Interpreter::new();
         match interpreter.interpret(&ast) {
             Ok(result) => println!("{}", result),
+            Err(e) => eprintln!("Error: {}", e),
+        }
+
+        let translator = PostfixTranslator::new();
+        match translator.translate(&ast) {
+            Ok(result) => println!("Translated: '{}'", result),
             Err(e) => eprintln!("Error: {}", e),
         }
     }
