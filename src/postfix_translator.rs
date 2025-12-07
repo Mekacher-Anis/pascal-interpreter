@@ -12,6 +12,14 @@ impl PostfixTranslator {
     pub fn visit(&self, node: &ASTNode) -> Result<String> {
         match node {
             ASTNode::NumNode { value, .. } => Ok(value.to_string()),
+            ASTNode::UnaryOpNode { expr, token } => {
+                let value = self.visit(&expr)?;
+                match token {
+                    Token::Plus => Ok(value.to_string()),
+                    Token::Minus => Ok(format!("{value} -")),
+                    _ => Err(anyhow!("Invalid operator")),
+                }
+            }
             ASTNode::BinOpNode { left, right, op } => {
                 let left_val = self.visit(left)?;
                 let right_val = self.visit(right)?;

@@ -2,6 +2,10 @@ use crate::token::Token;
 
 #[derive(Debug)]
 pub enum ASTNode {
+    UnaryOpNode {
+        expr: Box<ASTNode>,
+        token: Token,
+    },
     BinOpNode {
         left: Box<ASTNode>,
         right: Box<ASTNode>,
@@ -9,6 +13,6 @@ pub enum ASTNode {
     },
     NumNode {
         token: Token,
-        value: u32,
+        value: i32,
     },
 }

@@ -33,6 +33,20 @@ impl<'a> Parser<'a> {
 
     fn factor(&mut self) -> Result<ASTNode> {
         match self.current_token {
+            Token::Plus => {
+                self.eat(Some(&Token::Plus))?;
+                Ok(ASTNode::UnaryOpNode {
+                    token: Token::Plus,
+                    expr: Box::new(self.factor()?),
+                })
+            }
+            Token::Minus => {
+                self.eat(Some(&Token::Minus))?;
+                Ok(ASTNode::UnaryOpNode {
+                    token: Token::Minus,
+                    expr: Box::new(self.factor()?),
+                })
+            }
             Token::Integer(val) => {
                 self.eat(Some(&Token::Integer(0)))?;
                 Ok(ASTNode::NumNode {

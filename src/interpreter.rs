@@ -9,9 +9,17 @@ impl Interpreter {
         Interpreter
     }
 
-    pub fn visit(&self, node: &ASTNode) -> Result<u32> {
+    pub fn visit(&self, node: &ASTNode) -> Result<i32> {
         match node {
             ASTNode::NumNode { value, .. } => Ok(*value),
+            ASTNode::UnaryOpNode { expr, token } => {
+                let value = self.visit(&expr)?;
+                match token {
+                    Token::Plus => Ok(value),
+                    Token::Minus => Ok(-value),
+                    _ => Err(anyhow!("Invalid operator")),
+                }
+            }
             ASTNode::BinOpNode { left, right, op } => {
                 let left_val = self.visit(left)?;
                 let right_val = self.visit(right)?;
@@ -26,7 +34,7 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&self, node: &ASTNode) -> Result<u32> {
+    pub fn interpret(&self, node: &ASTNode) -> Result<i32> {
         self.visit(node)
     }
 }

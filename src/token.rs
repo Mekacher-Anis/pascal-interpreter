@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Integer(u32),
+    Integer(i32),
     Plus,
     Minus,
     Asterisk,

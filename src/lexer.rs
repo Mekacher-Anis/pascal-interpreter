@@ -14,13 +14,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn integer(&mut self) -> Result<u32> {
-        let mut result: u32 = 0;
+    fn integer(&mut self) -> Result<i32> {
+        let mut result: i32 = 0;
         let mut found = false;
 
         while let Some(&ch) = self.chars.peek() {
             if let Some(digit) = ch.to_digit(10) {
-                result = result * 10 + digit;
+                result = result * 10 + digit as i32;
                 self.chars.next();
                 found = true;
             } else {

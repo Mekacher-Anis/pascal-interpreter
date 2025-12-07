@@ -67,7 +67,7 @@ fn main() -> io::Result<()> {
 mod tests {
     use super::*;
 
-    fn evaluate(text: &str) -> u32 {
+    fn evaluate(text: &str) -> i32 {
         let lexer = Lexer::new(text);
         let mut parser = Parser::new(lexer).unwrap();
         let ast = parser.parse().unwrap();
@@ -126,5 +126,31 @@ mod tests {
     fn test_nested_parenthesis() {
         assert_eq!(evaluate("((1 + 2) * (3 + 4))"), 21);
         assert_eq!(evaluate("2 * (3 + (4 * 5))"), 46);
+    }
+
+    #[test]
+    fn test_unary_minus() {
+        assert_eq!(evaluate("-3"), -3);
+    }
+
+    #[test]
+    fn test_unary_plus() {
+        assert_eq!(evaluate("+3"), 3);
+    }
+
+    #[test]
+    fn test_multiple_unary_operators() {
+        assert_eq!(evaluate("--3"), 3);
+        assert_eq!(evaluate("++3"), 3);
+        assert_eq!(evaluate("-+3"), -3);
+        assert_eq!(evaluate("---3"), -3);
+    }
+
+    #[test]
+    fn test_unary_operators_in_expressions() {
+        assert_eq!(evaluate("5 - -2"), 7);
+        assert_eq!(evaluate("5 + +2"), 7);
+        assert_eq!(evaluate("5 * -2"), -10);
+        assert_eq!(evaluate("-5 * -2"), 10);
     }
 }
