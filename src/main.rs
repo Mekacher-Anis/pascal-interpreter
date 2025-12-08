@@ -7,14 +7,14 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod symbols;
-mod symtab_builder;
+mod semantic_analyzer;
 mod token;
 mod visualizer;
 
 use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
-use symtab_builder::SymbolTableBuilder;
+use semantic_analyzer::SemanticAnalyzer;
 use visualizer::Visualizer;
 
 fn main() -> io::Result<()> {
@@ -53,7 +53,7 @@ fn main() -> io::Result<()> {
         println!("AST visualization saved to ast.svg");
     }
 
-    let mut symtab_builder = SymbolTableBuilder::new();
+    let mut symtab_builder = SemanticAnalyzer::new();
     if let Err(e) = symtab_builder.build(&ast) {
         eprintln!("Error: {}", e);
         std::process::exit(1);

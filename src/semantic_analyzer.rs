@@ -2,13 +2,13 @@ use crate::ast::ASTNode;
 use crate::interpreter::{InterpretError, InterpretResult};
 use crate::symbols::{Symbol, SymbolKind, SymbolTable};
 
-pub struct SymbolTableBuilder {
+pub struct SemanticAnalyzer {
     pub symtab: SymbolTable,
 }
 
-impl SymbolTableBuilder {
+impl SemanticAnalyzer {
     pub fn new() -> Self {
-        SymbolTableBuilder {
+        SemanticAnalyzer {
             symtab: SymbolTable::new(),
         }
     }
