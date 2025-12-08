@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::ast::{ASTNode, BuiltinNumTypes};
-use crate::symbols::{Symbol, SymbolKind, SymbolTable};
+use crate::symbols::SymbolTable;
 use crate::token::Token;
 
 pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
@@ -89,10 +89,10 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
+    pub fn new(symtab: SymbolTable) -> Self {
         Interpreter {
             global_memory: HashMap::new(),
-            symtab: SymbolTable::new(),
+            symtab,
         }
     }
 
@@ -201,43 +201,16 @@ impl Interpreter {
 
     fn visit_var_decl_node(
         &mut self,
-        var_node: &Box<ASTNode>,
-        type_node: &Box<ASTNode>,
+        _var_node: &Box<ASTNode>,
+        _type_node: &Box<ASTNode>,
     ) -> InterpretResult<()> {
-        let ASTNode::Var { name: var_name } = &**var_node else {
-            return Err(InterpretError::InvalidVarDeclVarNode);
-        };
-        let ASTNode::Type {
-            value: type_name, ..
-        } = &**type_node
-        else {
-            return Err(InterpretError::InvalidVarDeclTypeNode);
-        };
-
-        // make sure it's defined first
-        self.symtab
-            .lookup(type_name)
-            .ok_or_else(|| InterpretError::UndefinedType {
-                type_name: type_name.clone(),
-                var_name: var_name.clone(),
-            })?;
-
-        let symbol = Symbol {
-            name: var_name.clone(),
-            kind: SymbolKind::Variable {
-                type_name: type_name.to_owned(),
-            },
-        };
-
-        self.symtab.define(symbol);
-
         Ok(())
     }
 
     fn visit_procedure_decl_node(
         &mut self,
-        procedure_name: &String,
-        block: &Box<ASTNode>,
+        _procedure_name: &String,
+        _block: &Box<ASTNode>,
     ) -> InterpretResult<()> {
         Ok(())
     }

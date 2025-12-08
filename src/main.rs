@@ -7,12 +7,14 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod symbols;
+mod symtab_builder;
 mod token;
 mod visualizer;
 
 use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
+use symtab_builder::SymbolTableBuilder;
 use visualizer::Visualizer;
 
 fn main() -> io::Result<()> {
@@ -51,7 +53,15 @@ fn main() -> io::Result<()> {
         println!("AST visualization saved to ast.svg");
     }
 
-    let mut interpreter = Interpreter::new();
+    let mut symtab_builder = SymbolTableBuilder::new();
+    if let Err(e) = symtab_builder.build(&ast) {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
+
+    let symtab = symtab_builder.into_symbol_table();
+
+    let mut interpreter = Interpreter::new(symtab);
     match interpreter.interpret(&ast) {
         Ok(_) => println!("program done"),
         Err(e) => eprintln!("Error: {}", e),

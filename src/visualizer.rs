@@ -197,7 +197,9 @@ impl Visualizer {
                 ("VarDecl".to_string(), vec![v, t])
             }
             ASTNode::Type { value, .. } => (format!("Type({})", value), vec![]),
-            ASTNode::ProcedureDecl { proc_name: name, .. } => (format!("Function({name})"), vec![]),
+            ASTNode::ProcedureDecl {
+                proc_name: name, ..
+            } => (format!("Function({name})"), vec![]),
         };
 
         let my_x = if children_indices.is_empty() {

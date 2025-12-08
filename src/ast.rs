@@ -96,7 +96,9 @@ impl fmt::Display for ASTNode {
             ASTNode::UnaryOpNode { expr, token } => write!(f, "{}{}", token, expr),
             ASTNode::BinOpNode { left, right, op } => write!(f, "{} {} {}", left, op, right),
             ASTNode::NumNode { value, .. } => write!(f, "{}", value),
-            ASTNode::ProcedureDecl { proc_name: name, .. } => write!(f, "fn {name}"),
+            ASTNode::ProcedureDecl {
+                proc_name: name, ..
+            } => write!(f, "fn {name}"),
         }
     }
 }

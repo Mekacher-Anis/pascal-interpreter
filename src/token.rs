@@ -64,7 +64,7 @@ impl fmt::Display for Token {
             Token::RealConst(v) => write!(f, "RealConst({v})"),
             Token::Real => write!(f, "REAL"),
             Token::FloatDiv => write!(f, "/"),
-            Token::Procedure => write!(f, "PROCEDURE")
+            Token::Procedure => write!(f, "PROCEDURE"),
         }
     }
 }
