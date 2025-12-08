@@ -1,9 +1,99 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::ast::{ASTNode, BuiltinNumTypes};
 use crate::symbols::{Symbol, SymbolKind, SymbolTable};
 use crate::token::Token;
-use anyhow::{anyhow, Ok, Result};
+
+pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
+
+#[derive(Debug, Clone)]
+pub enum InterpretError {
+    InvalidVarDeclVarNode,
+    InvalidVarDeclTypeNode,
+    UndefinedType {
+        type_name: String,
+        var_name: String,
+    },
+    AssignTargetMustBeVar,
+    UndefinedVariable {
+        name: String,
+    },
+    UninitializedVariable {
+        name: String,
+    },
+    MissingUnaryOperand,
+    InvalidUnaryOperator {
+        token: Token,
+    },
+    MissingBinaryOperand {
+        side: BinaryOperandSide,
+    },
+    InvalidBinaryOperator {
+        token: Token,
+    },
+    MissingAssignmentValue {
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOperandSide {
+    Left,
+    Right,
+}
+
+impl fmt::Display for BinaryOperandSide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryOperandSide::Left => write!(f, "left"),
+            BinaryOperandSide::Right => write!(f, "right"),
+        }
+    }
+}
+
+impl fmt::Display for InterpretError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpretError::InvalidVarDeclVarNode => {
+                write!(f, "Variable declarations must start with a variable name")
+            }
+            InterpretError::InvalidVarDeclTypeNode => {
+                write!(f, "Variable declarations must specify a valid type")
+            }
+            InterpretError::UndefinedType { type_name, var_name } => write!(
+                f,
+                "Undefined type '{type_name}' used for variable '{var_name}'"
+            ),
+            InterpretError::AssignTargetMustBeVar => {
+                write!(f, "The left-hand side of an assignment must be a variable")
+            }
+            InterpretError::UndefinedVariable { name } => {
+                write!(f, "Undefined variable '{name}'")
+            }
+            InterpretError::UninitializedVariable { name } => {
+                write!(f, "Variable '{name}' is declared but has no value yet")
+            }
+            InterpretError::MissingUnaryOperand => {
+                write!(f, "Unary operation is missing its operand")
+            }
+            InterpretError::InvalidUnaryOperator { token } => {
+                write!(f, "Invalid unary operator '{token}'")
+            }
+            InterpretError::MissingBinaryOperand { side } => {
+                write!(f, "Binary operation missing its {side} operand")
+            }
+            InterpretError::InvalidBinaryOperator { token } => {
+                write!(f, "Invalid binary operator '{token}'")
+            }
+            InterpretError::MissingAssignmentValue { name } => {
+                write!(f, "Assignment to '{name}' is missing a value")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InterpretError {}
 
 pub struct Interpreter {
     pub variables: HashMap<String, BuiltinNumTypes>,
@@ -39,11 +129,11 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, node: &ASTNode) -> Result<Option<BuiltinNumTypes>> {
+    pub fn interpret(&mut self, node: &ASTNode) -> InterpretResult<Option<BuiltinNumTypes>> {
         self.visit(node)
     }
 
-    pub fn visit(&mut self, node: &ASTNode) -> Result<Option<BuiltinNumTypes>> {
+    pub fn visit(&mut self, node: &ASTNode) -> InterpretResult<Option<BuiltinNumTypes>> {
         match node {
             ASTNode::NumNode { value, .. } => {
                 let res = self.visit_num_node(*value)?;
@@ -95,8 +185,8 @@ impl Interpreter {
         }
     }
 
-    fn visit_program_node(&mut self, name: &String, block: &Box<ASTNode>) -> Result<()> {
-        self.visit(&block)?;
+    fn visit_program_node(&mut self, _name: &String, block: &Box<ASTNode>) -> InterpretResult<()> {
+        self.visit(block)?;
         Ok(())
     }
 
@@ -104,7 +194,7 @@ impl Interpreter {
         &mut self,
         declarations: &Vec<Box<ASTNode>>,
         compound_statement: &Box<ASTNode>,
-    ) -> Result<()> {
+    ) -> InterpretResult<()> {
         for d in declarations {
             self.visit(d)?;
         }
@@ -118,25 +208,24 @@ impl Interpreter {
         &mut self,
         var_node: &Box<ASTNode>,
         type_node: &Box<ASTNode>,
-    ) -> Result<()> {
+    ) -> InterpretResult<()> {
         let ASTNode::Var { name: var_name } = &**var_node else {
-            return Err(anyhow!(
-                "visit_var_decl_node expected var_node to be of type ASTNode::Var"
-            ));
+            return Err(InterpretError::InvalidVarDeclVarNode);
         };
         let ASTNode::Type {
             value: type_name, ..
         } = &**type_node
         else {
-            return Err(anyhow!(
-                "visit_var_decl_node expected type_node to be of type ASTNode::Var"
-            ));
+            return Err(InterpretError::InvalidVarDeclTypeNode);
         };
 
         // make sure it's defined first
-        self.symtab.lookup(type_name).ok_or(anyhow!(
-            "Undefined type '{type_name}' used for variable '{var_name}'"
-        ))?;
+        self.symtab
+            .lookup(type_name)
+            .ok_or_else(|| InterpretError::UndefinedType {
+                type_name: type_name.clone(),
+                var_name: var_name.clone(),
+            })?;
 
         let symbol = Symbol {
             name: var_name.clone(),
@@ -150,29 +239,31 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_type_node(&self, value: &String) -> Result<()> {
+    fn visit_type_node(&self, _value: &String) -> InterpretResult<()> {
         Ok(())
     }
 
-    fn visit_num_node(&self, value: BuiltinNumTypes) -> Result<BuiltinNumTypes> {
+    fn visit_num_node(&self, value: BuiltinNumTypes) -> InterpretResult<BuiltinNumTypes> {
         Ok(value)
     }
 
-    fn visit_unary_op_node(&mut self, token: &Token, expr: &ASTNode) -> Result<BuiltinNumTypes> {
-        let res: Option<BuiltinNumTypes> = self.visit(expr)?;
-        let value;
-        match res {
-            Some(val) => match val {
-                BuiltinNumTypes::F32(v) => value = v,
-                BuiltinNumTypes::I32(v) => value = v as f32,
-            },
-            None => return Err(anyhow!("Expected a value for a unary op")),
-        }
+    fn visit_unary_op_node(
+        &mut self,
+        token: &Token,
+        expr: &ASTNode,
+    ) -> InterpretResult<BuiltinNumTypes> {
+        let value = match self.visit(expr)? {
+            Some(BuiltinNumTypes::F32(v)) => v,
+            Some(BuiltinNumTypes::I32(v)) => v as f32,
+            None => return Err(InterpretError::MissingUnaryOperand),
+        };
 
         match token {
             Token::Plus => Ok(BuiltinNumTypes::F32(value)),
             Token::Minus => Ok(BuiltinNumTypes::F32(-value)),
-            _ => Err(anyhow!("Invalid operator")),
+            _ => Err(InterpretError::InvalidUnaryOperator {
+                token: token.clone(),
+            }),
         }
     }
 
@@ -181,26 +272,26 @@ impl Interpreter {
         op: &Token,
         left: &ASTNode,
         right: &ASTNode,
-    ) -> Result<BuiltinNumTypes> {
-        let mut res = self.visit(left)?;
-        let left_value;
-        match res {
-            Some(val) => match val {
-                BuiltinNumTypes::F32(v) => left_value = v,
-                BuiltinNumTypes::I32(v) => left_value = v as f32,
-            },
-            None => return Err(anyhow!("Expected a value of the left hand of a bin op")),
-        }
+    ) -> InterpretResult<BuiltinNumTypes> {
+        let left_value = match self.visit(left)? {
+            Some(BuiltinNumTypes::F32(v)) => v,
+            Some(BuiltinNumTypes::I32(v)) => v as f32,
+            None => {
+                return Err(InterpretError::MissingBinaryOperand {
+                    side: BinaryOperandSide::Left,
+                })
+            }
+        };
 
-        res = self.visit(right)?;
-        let right_value;
-        match res {
-            Some(val) => match val {
-                BuiltinNumTypes::F32(v) => right_value = v,
-                BuiltinNumTypes::I32(v) => right_value = v as f32,
-            },
-            None => return Err(anyhow!("Expected a value of the left hand of a bin op")),
-        }
+        let right_value = match self.visit(right)? {
+            Some(BuiltinNumTypes::F32(v)) => v,
+            Some(BuiltinNumTypes::I32(v)) => v as f32,
+            None => {
+                return Err(InterpretError::MissingBinaryOperand {
+                    side: BinaryOperandSide::Right,
+                })
+            }
+        };
 
         match op {
             Token::Plus => Ok(BuiltinNumTypes::F32(left_value + right_value)),
@@ -210,27 +301,29 @@ impl Interpreter {
             Token::IntegerDiv => Ok(BuiltinNumTypes::F32(
                 ((left_value as i32) / (right_value as i32)) as f32,
             )),
-            _ => Err(anyhow!("Invalid operator")),
+            _ => Err(InterpretError::InvalidBinaryOperator {
+                token: op.clone(),
+            }),
         }
     }
 
-    fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> Result<()> {
+    fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> InterpretResult<()> {
         let ASTNode::Var { name, .. } = left else {
-            return Err(anyhow!(
-                "Left hand-side of assignment needs to be a variable"
-            ));
+            return Err(InterpretError::AssignTargetMustBeVar);
         };
 
         self.symtab
             .lookup(name)
-            .ok_or(anyhow!("Assigning undefined variable {name}"))?;
+            .ok_or_else(|| InterpretError::UndefinedVariable {
+                name: name.clone(),
+            })?;
 
         let res = self.visit(right)?;
 
         let Some(right_hand_value) = res else {
-            return Err(anyhow!(
-                "Expected right hand value for an assignment to be a valid value, got None"
-            ));
+            return Err(InterpretError::MissingAssignmentValue {
+                name: name.clone(),
+            });
         };
 
         self.variables.insert(name.to_owned(), right_hand_value);
@@ -238,18 +331,22 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_var_node(&mut self, name: &String) -> Result<BuiltinNumTypes> {
+    fn visit_var_node(&mut self, name: &String) -> InterpretResult<BuiltinNumTypes> {
         self.symtab
             .lookup(name)
-            .ok_or(anyhow!("Accessing undefined variable {name}"))?;
+            .ok_or_else(|| InterpretError::UndefinedVariable {
+                name: name.clone(),
+            })?;
 
         self.variables
             .get(name)
-            .map(|v| v.clone())
-            .ok_or(anyhow!("Accessing undefined variable \"{name}\""))
+            .cloned()
+            .ok_or_else(|| InterpretError::UninitializedVariable {
+                name: name.clone(),
+            })
     }
 
-    fn visit_compound_node(&mut self, children: &Vec<Box<ASTNode>>) -> Result<()> {
+    fn visit_compound_node(&mut self, children: &Vec<Box<ASTNode>>) -> InterpretResult<()> {
         for child in children {
             self.visit(child)?;
         }
