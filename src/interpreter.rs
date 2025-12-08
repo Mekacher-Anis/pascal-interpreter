@@ -11,30 +11,15 @@ pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
 pub enum InterpretError {
     InvalidVarDeclVarNode,
     InvalidVarDeclTypeNode,
-    UndefinedType {
-        type_name: String,
-        var_name: String,
-    },
+    UndefinedType { type_name: String, var_name: String },
     AssignTargetMustBeVar,
-    UndefinedVariable {
-        name: String,
-    },
-    UninitializedVariable {
-        name: String,
-    },
+    UndefinedVariable { name: String },
+    UninitializedVariable { name: String },
     MissingUnaryOperand,
-    InvalidUnaryOperator {
-        token: Token,
-    },
-    MissingBinaryOperand {
-        side: BinaryOperandSide,
-    },
-    InvalidBinaryOperator {
-        token: Token,
-    },
-    MissingAssignmentValue {
-        name: String,
-    },
+    InvalidUnaryOperator { token: Token },
+    MissingBinaryOperand { side: BinaryOperandSide },
+    InvalidBinaryOperator { token: Token },
+    MissingAssignmentValue { name: String },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +46,10 @@ impl fmt::Display for InterpretError {
             InterpretError::InvalidVarDeclTypeNode => {
                 write!(f, "Variable declarations must specify a valid type")
             }
-            InterpretError::UndefinedType { type_name, var_name } => write!(
+            InterpretError::UndefinedType {
+                type_name,
+                var_name,
+            } => write!(
                 f,
                 "Undefined type '{type_name}' used for variable '{var_name}'"
             ),
@@ -182,6 +170,13 @@ impl Interpreter {
                 self.visit_type_node(value)?;
                 Ok(None)
             }
+            ASTNode::ProcedureDecl {
+                proc_name: name,
+                block_node: block,
+            } => {
+                self.visit_procedure_decl_node(name, block)?;
+                Ok(None)
+            }
         }
     }
 
@@ -236,6 +231,14 @@ impl Interpreter {
 
         self.symtab.define(symbol);
 
+        Ok(())
+    }
+
+    fn visit_procedure_decl_node(
+        &mut self,
+        procedure_name: &String,
+        block: &Box<ASTNode>,
+    ) -> InterpretResult<()> {
         Ok(())
     }
 
@@ -301,9 +304,7 @@ impl Interpreter {
             Token::IntegerDiv => Ok(BuiltinNumTypes::F32(
                 ((left_value as i32) / (right_value as i32)) as f32,
             )),
-            _ => Err(InterpretError::InvalidBinaryOperator {
-                token: op.clone(),
-            }),
+            _ => Err(InterpretError::InvalidBinaryOperator { token: op.clone() }),
         }
     }
 
@@ -314,16 +315,12 @@ impl Interpreter {
 
         self.symtab
             .lookup(name)
-            .ok_or_else(|| InterpretError::UndefinedVariable {
-                name: name.clone(),
-            })?;
+            .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
 
         let res = self.visit(right)?;
 
         let Some(right_hand_value) = res else {
-            return Err(InterpretError::MissingAssignmentValue {
-                name: name.clone(),
-            });
+            return Err(InterpretError::MissingAssignmentValue { name: name.clone() });
         };
 
         self.global_memory.insert(name.to_owned(), right_hand_value);
@@ -334,16 +331,12 @@ impl Interpreter {
     fn visit_var_node(&mut self, name: &String) -> InterpretResult<BuiltinNumTypes> {
         self.symtab
             .lookup(name)
-            .ok_or_else(|| InterpretError::UndefinedVariable {
-                name: name.clone(),
-            })?;
+            .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
 
         self.global_memory
             .get(name)
             .cloned()
-            .ok_or_else(|| InterpretError::UninitializedVariable {
-                name: name.clone(),
-            })
+            .ok_or_else(|| InterpretError::UninitializedVariable { name: name.clone() })
     }
 
     fn visit_compound_node(&mut self, children: &Vec<Box<ASTNode>>) -> InterpretResult<()> {

@@ -62,12 +62,32 @@ impl<'a> Parser<'a> {
 
     fn declarations(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut declarations = vec![];
-        while let Token::Var = self.current_token {
-            self.eat(Some(&Token::Var))?;
-            while let Token::Id(_) = self.current_token {
-                let vd = self.variable_declaration()?;
-                declarations.extend(vd);
+
+        while matches!(self.current_token, Token::Var | Token::Procedure) {
+            // variable declarations
+            if matches!(self.current_token, Token::Var) {
+                self.eat(Some(&Token::Var))?;
+                while let Token::Id(_) = self.current_token {
+                    let vd = self.variable_declaration()?;
+                    declarations.extend(vd);
+                    self.eat(Some(&Token::Semi))?;
+                }
+            } else {
+                // procedure declarations
+                self.eat(Some(&Token::Procedure))?;
+                let Token::Id(procedure_name) = self.current_token.clone() else {
+                    return Err(anyhow!(
+                        "Expected a procedure name after Keyword 'PROCEDURE'"
+                    ));
+                };
+                self.eat(Some(&Token::Id("".to_string())))?;
                 self.eat(Some(&Token::Semi))?;
+                let block = self.block()?;
+                self.eat(Some(&Token::Semi));
+                declarations.push(Box::new(ASTNode::ProcedureDecl {
+                    proc_name: procedure_name,
+                    block_node: Box::new(block),
+                }));
             }
         }
 

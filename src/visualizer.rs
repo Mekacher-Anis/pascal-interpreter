@@ -122,6 +122,7 @@ impl Visualizer {
             Token::IntegerDiv => "DIV".to_string(),
             Token::RealConst(v) => v.to_string(),
             Token::Real => "REAL".to_string(),
+            Token::Procedure => "PROCEDURE".to_string(),
         }
     }
 
@@ -196,6 +197,7 @@ impl Visualizer {
                 ("VarDecl".to_string(), vec![v, t])
             }
             ASTNode::Type { value, .. } => (format!("Type({})", value), vec![]),
+            ASTNode::ProcedureDecl { proc_name: name, .. } => (format!("Function({name})"), vec![]),
         };
 
         let my_x = if children_indices.is_empty() {

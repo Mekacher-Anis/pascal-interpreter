@@ -25,6 +25,7 @@ pub enum Token {
     Assign,
     Semi,
     Eof,
+    Procedure,
 }
 
 pub static RESERVER_KEYWORDS: phf::Map<&'static str, Token> = phf_map! {
@@ -35,6 +36,7 @@ pub static RESERVER_KEYWORDS: phf::Map<&'static str, Token> = phf_map! {
     "div" => Token::IntegerDiv,
     "integer" => Token::Integer,
     "real" => Token::Real,
+    "procedure" => Token::Procedure,
 };
 
 impl fmt::Display for Token {
@@ -62,6 +64,7 @@ impl fmt::Display for Token {
             Token::RealConst(v) => write!(f, "RealConst({v})"),
             Token::Real => write!(f, "REAL"),
             Token::FloatDiv => write!(f, "/"),
+            Token::Procedure => write!(f, "PROCEDURE")
         }
     }
 }

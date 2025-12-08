@@ -11,6 +11,10 @@ pub enum ASTNode {
         declarations: Vec<Box<ASTNode>>,
         compound_statement: Box<ASTNode>,
     },
+    ProcedureDecl {
+        proc_name: String,
+        block_node: Box<ASTNode>,
+    },
     VarDecl {
         var_node: Box<ASTNode>,
         type_node: Box<ASTNode>,
@@ -92,6 +96,7 @@ impl fmt::Display for ASTNode {
             ASTNode::UnaryOpNode { expr, token } => write!(f, "{}{}", token, expr),
             ASTNode::BinOpNode { left, right, op } => write!(f, "{} {} {}", left, op, right),
             ASTNode::NumNode { value, .. } => write!(f, "{}", value),
+            ASTNode::ProcedureDecl { proc_name: name, .. } => write!(f, "fn {name}"),
         }
     }
 }
