@@ -198,8 +198,12 @@ impl Visualizer {
             }
             ASTNode::Type { value, .. } => (format!("Type({})", value), vec![]),
             ASTNode::ProcedureDecl {
-                proc_name: name, ..
-            } => (format!("Function({name})"), vec![]),
+                proc_name: name,
+                block_node,
+            } => {
+                let v = self.build_tree(&block_node, depth + 1);
+                (format!("Function({name})"), vec![v])
+            }
         };
 
         let my_x = if children_indices.is_empty() {
