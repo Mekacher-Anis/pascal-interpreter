@@ -9,6 +9,7 @@ pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
 
 #[derive(Debug, Clone)]
 pub enum InterpretError {
+    SymbolAlreadyDefined { name: String },
     InvalidVarDeclVarNode,
     InvalidVarDeclTypeNode,
     UndefinedType { type_name: String, var_name: String },
@@ -76,6 +77,9 @@ impl fmt::Display for InterpretError {
             }
             InterpretError::MissingAssignmentValue { name } => {
                 write!(f, "Assignment to '{name}' is missing a value")
+            }
+            InterpretError::SymbolAlreadyDefined { name } => {
+                write!(f, "Symbol '{name}' is already defined")
             }
         }
     }

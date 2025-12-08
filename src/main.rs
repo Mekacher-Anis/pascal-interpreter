@@ -6,8 +6,8 @@ mod ast;
 mod interpreter;
 mod lexer;
 mod parser;
-mod symbols;
 mod semantic_analyzer;
+mod symbols;
 mod token;
 mod visualizer;
 
@@ -53,13 +53,13 @@ fn main() -> io::Result<()> {
         println!("AST visualization saved to ast.svg");
     }
 
-    let mut symtab_builder = SemanticAnalyzer::new();
-    if let Err(e) = symtab_builder.build(&ast) {
+    let mut semantic_analyzer = SemanticAnalyzer::new();
+    if let Err(e) = semantic_analyzer.analyze(&ast) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 
-    let symtab = symtab_builder.into_symbol_table();
+    let symtab = semantic_analyzer.into_symbol_table();
 
     let mut interpreter = Interpreter::new(symtab);
     match interpreter.interpret(&ast) {

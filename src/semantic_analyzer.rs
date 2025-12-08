@@ -13,7 +13,7 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn build(&mut self, node: &ASTNode) -> InterpretResult<()> {
+    pub fn analyze(&mut self, node: &ASTNode) -> InterpretResult<()> {
         self.visit(node)
     }
 
@@ -90,6 +90,12 @@ impl SemanticAnalyzer {
                 var_name: var_name.clone(),
             })?;
 
+        if let Some(_) = self.symtab.lookup(var_name) {
+            return Err(InterpretError::SymbolAlreadyDefined {
+                name: var_name.to_string(),
+            });
+        }
+
         let symbol = Symbol {
             name: var_name.clone(),
             kind: SymbolKind::Variable {
@@ -111,13 +117,11 @@ impl SemanticAnalyzer {
     }
 
     fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> InterpretResult<()> {
-        let ASTNode::Var { name, .. } = left else {
+        let ASTNode::Var { .. } = left else {
             return Err(InterpretError::AssignTargetMustBeVar);
         };
 
-        self.symtab
-            .lookup(name)
-            .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
+        self.visit(left)?;
 
         self.visit(right)
     }
