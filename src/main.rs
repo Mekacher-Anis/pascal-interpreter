@@ -6,6 +6,7 @@ mod ast;
 mod interpreter;
 mod lexer;
 mod parser;
+mod symbols;
 mod token;
 mod visualizer;
 
@@ -57,6 +58,8 @@ fn main() -> io::Result<()> {
     }
     // Pretty print interpreter variables after execution completes
     interpreter.pretty_print_variables();
+
+    println!("Symtable:\n{}", interpreter.symtab);
 
     Ok(())
 }

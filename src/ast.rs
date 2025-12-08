@@ -17,7 +17,7 @@ pub enum ASTNode {
     },
     Type {
         token: Token,
-        value: Token,
+        value: String,
     },
     Compound {
         children: Vec<Box<ASTNode>>,
@@ -42,21 +42,21 @@ pub enum ASTNode {
     },
     NumNode {
         token: Token,
-        value: ASTVarType,
+        value: BuiltinNumTypes,
     },
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum ASTVarType {
+pub enum BuiltinNumTypes {
     I32(i32),
     F32(f32),
 }
 
-impl fmt::Display for ASTVarType {
+impl fmt::Display for BuiltinNumTypes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ASTVarType::I32(val) => write!(f, "{}", val),
-            ASTVarType::F32(val) => write!(f, "{}", val),
+            BuiltinNumTypes::I32(val) => write!(f, "{}", val),
+            BuiltinNumTypes::F32(val) => write!(f, "{}", val),
         }
     }
 }

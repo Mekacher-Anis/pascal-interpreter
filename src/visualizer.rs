@@ -1,4 +1,4 @@
-use crate::ast::{ASTNode, ASTVarType};
+use crate::ast::{ASTNode, BuiltinNumTypes};
 use crate::token::Token;
 
 struct DrawNode {
@@ -167,8 +167,8 @@ impl Visualizer {
             }
             ASTNode::NumNode { value, .. } => {
                 let value_str = match value {
-                    ASTVarType::I32(i) => i.to_string(),
-                    ASTVarType::F32(f) => f.to_string(),
+                    BuiltinNumTypes::I32(i) => i.to_string(),
+                    BuiltinNumTypes::F32(f) => f.to_string(),
                 };
                 (format!("Num({})", value_str), vec![])
             }
@@ -195,9 +195,7 @@ impl Visualizer {
                 let t = self.build_tree(type_node, depth + 1);
                 ("VarDecl".to_string(), vec![v, t])
             }
-            ASTNode::Type { value, .. } => {
-                (format!("Type({})", Self::token_to_string(value)), vec![])
-            }
+            ASTNode::Type { value, .. } => (format!("Type({})", value), vec![]),
         };
 
         let my_x = if children_indices.is_empty() {

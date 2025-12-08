@@ -1,5 +1,6 @@
-use crate::ast::{ASTNode, ASTVarType};
+use crate::ast::{ASTNode, BuiltinNumTypes};
 use crate::lexer::Lexer;
+use crate::symbols::BuiltinTypes;
 use crate::token::Token;
 use anyhow::{anyhow, Ok, Result};
 
@@ -115,14 +116,14 @@ impl<'a> Parser<'a> {
                 self.eat(Some(&Token::Integer))?;
                 Ok(ASTNode::Type {
                     token: self.current_token.clone(),
-                    value: Token::Integer,
+                    value: BuiltinTypes::Integer.to_string(),
                 })
             }
             Token::Real => {
                 self.eat(Some(&Token::Real))?;
                 Ok(ASTNode::Type {
                     token: self.current_token.clone(),
-                    value: Token::Real,
+                    value: BuiltinTypes::Real.to_string(),
                 })
             }
             _ => Err(anyhow!("Unsupported variable type.")),
@@ -209,14 +210,14 @@ impl<'a> Parser<'a> {
                 self.eat(Some(&Token::IntegerConst(0)))?;
                 Ok(ASTNode::NumNode {
                     token: Token::IntegerConst(val),
-                    value: ASTVarType::I32(val),
+                    value: BuiltinNumTypes::I32(val),
                 })
             }
             Token::RealConst(val) => {
                 self.eat(Some(&Token::RealConst(0.0)))?;
                 Ok(ASTNode::NumNode {
                     token: Token::RealConst(val),
-                    value: ASTVarType::F32(val),
+                    value: BuiltinNumTypes::F32(val),
                 })
             }
             Token::LParenthesis => {
