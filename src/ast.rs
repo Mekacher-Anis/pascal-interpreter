@@ -1,7 +1,24 @@
 use crate::token::Token;
+use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASTNode {
+    Program {
+        name: String,
+        block: Box<ASTNode>,
+    },
+    Block {
+        declarations: Vec<Box<ASTNode>>,
+        compound_statement: Box<ASTNode>,
+    },
+    VarDecl {
+        var_node: Box<ASTNode>,
+        type_node: Box<ASTNode>,
+    },
+    Type {
+        token: Token,
+        value: Token,
+    },
     Compound {
         children: Vec<Box<ASTNode>>,
     },
@@ -12,7 +29,6 @@ pub enum ASTNode {
     },
     Var {
         name: String,
-        token: Token,
     },
     NoOp,
     UnaryOpNode {
@@ -26,6 +42,56 @@ pub enum ASTNode {
     },
     NumNode {
         token: Token,
-        value: i32,
+        value: ASTVarType,
     },
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ASTVarType {
+    I32(i32),
+    F32(f32),
+}
+
+impl fmt::Display for ASTVarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ASTVarType::I32(val) => write!(f, "{}", val),
+            ASTVarType::F32(val) => write!(f, "{}", val),
+        }
+    }
+}
+
+impl fmt::Display for ASTNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ASTNode::Program { name, block } => write!(f, "PROGRAM {};\n{}", name, block),
+            ASTNode::Block {
+                declarations,
+                compound_statement,
+            } => {
+                for decl in declarations {
+                    write!(f, "{}\n", decl)?;
+                }
+                write!(f, "{}", compound_statement)
+            }
+            ASTNode::VarDecl {
+                var_node,
+                type_node,
+            } => write!(f, "VAR {} : {};", var_node, type_node),
+            ASTNode::Type { value, .. } => write!(f, "{}", value),
+            ASTNode::Compound { children } => {
+                write!(f, "BEGIN\n")?;
+                for child in children {
+                    write!(f, "{};\n", child)?;
+                }
+                write!(f, "END")
+            }
+            ASTNode::Assign { left, right, .. } => write!(f, "{} := {}", left, right),
+            ASTNode::Var { name } => write!(f, "{}", name),
+            ASTNode::NoOp => Ok(()),
+            ASTNode::UnaryOpNode { expr, token } => write!(f, "{}{}", token, expr),
+            ASTNode::BinOpNode { left, right, op } => write!(f, "{} {} {}", left, op, right),
+            ASTNode::NumNode { value, .. } => write!(f, "{}", value),
+        }
+    }
 }

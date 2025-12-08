@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::ast::ASTNode;
+use crate::ast::{ASTNode, ASTVarType};
 use crate::token::Token;
 use anyhow::{anyhow, Ok, Result};
 
 pub struct Interpreter {
-    pub variables: HashMap<String, i32>,
+    pub variables: HashMap<String, ASTVarType>,
 }
 
 impl Interpreter {
@@ -36,48 +36,161 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, node: &ASTNode) -> Result<i32> {
+    pub fn interpret(&mut self, node: &ASTNode) -> Result<Option<ASTVarType>> {
         self.visit(node)
     }
 
-    pub fn visit(&mut self, node: &ASTNode) -> Result<i32> {
+    pub fn visit(&mut self, node: &ASTNode) -> Result<Option<ASTVarType>> {
         match node {
-            ASTNode::NumNode { value, .. } => self.visit_num_node(*value),
-            ASTNode::UnaryOpNode { expr, token } => self.visit_unary_op_node(token, expr),
-            ASTNode::BinOpNode { left, right, op } => self.visit_bin_op_node(op, left, right),
-            ASTNode::Assign { left, right, .. } => self.visit_assign_node(left, right),
-            ASTNode::Var { name: value, .. } => self.visit_var_node(value),
-            ASTNode::Compound { children } => self.visit_compound_node(children),
-            ASTNode::NoOp => Ok(0),
+            ASTNode::NumNode { value, .. } => {
+                self.visit_num_node(*value)?;
+                Ok(None)
+            }
+            ASTNode::UnaryOpNode { expr, token } => {
+                let res = self.visit_unary_op_node(token, expr)?;
+                Ok(Some(res))
+            }
+            ASTNode::BinOpNode { left, right, op } => {
+                let res = self.visit_bin_op_node(op, left, right)?;
+                Ok(Some(res))
+            }
+            ASTNode::Assign { left, right, .. } => {
+                self.visit_assign_node(left, right)?;
+                Ok(None)
+            }
+            ASTNode::Var { name: value, .. } => {
+                let value = self.visit_var_node(value)?;
+                Ok(Some(value))
+            }
+            ASTNode::Compound { children } => {
+                self.visit_compound_node(children)?;
+                Ok(None)
+            }
+            ASTNode::NoOp => Ok(None),
+            ASTNode::Program { name, block } => {
+                self.visit_program_node(name, block)?;
+                Ok(None)
+            }
+            ASTNode::Block {
+                declarations,
+                compound_statement,
+            } => {
+                self.visit_block_node(declarations, compound_statement)?;
+                Ok(None)
+            }
+            ASTNode::VarDecl {
+                var_node,
+                type_node,
+            } => {
+                self.visit_var_decl_node(var_node, type_node)?;
+                Ok(None)
+            }
+            ASTNode::Type { value, .. } => {
+                self.visit_type_node(value)?;
+                Ok(None)
+            }
         }
     }
 
-    fn visit_num_node(&self, value: i32) -> Result<i32> {
+    fn visit_program_node(&mut self, name: &String, block: &Box<ASTNode>) -> Result<()> {
+        self.visit(&block)?;
+        Ok(())
+    }
+
+    fn visit_block_node(
+        &mut self,
+        declarations: &Vec<Box<ASTNode>>,
+        compound_statement: &Box<ASTNode>,
+    ) -> Result<()> {
+        for d in declarations {
+            self.visit(d)?;
+        }
+
+        self.visit(compound_statement)?;
+
+        Ok(())
+    }
+
+    fn visit_var_decl_node(
+        &mut self,
+        var_node: &Box<ASTNode>,
+        type_node: &Box<ASTNode>,
+    ) -> Result<()> {
+        let ASTNode::Var { name } = &**var_node else {
+            return Err(anyhow!(
+                "visit_var_decl_node expected first node to be of type ASTNode::Var"
+            ));
+        };
+        let value = self.visit_var_node(name)?;
+
+        Ok(())
+    }
+
+    fn visit_type_node(&self, value: &Token) -> Result<()> {
+        Ok(())
+    }
+
+    fn visit_num_node(&self, value: ASTVarType) -> Result<ASTVarType> {
         Ok(value)
     }
 
-    fn visit_unary_op_node(&mut self, token: &Token, expr: &ASTNode) -> Result<i32> {
-        let value = self.visit(expr)?;
+    fn visit_unary_op_node(&mut self, token: &Token, expr: &ASTNode) -> Result<ASTVarType> {
+        let res: Option<ASTVarType> = self.visit(expr)?;
+        let value;
+        match res {
+            Some(val) => match val {
+                ASTVarType::F32(v) => value = v,
+                ASTVarType::I32(v) => value = v as f32,
+            },
+            None => return Err(anyhow!("Expected a value for a unary op")),
+        }
+
         match token {
-            Token::Plus => Ok(value),
-            Token::Minus => Ok(-value),
+            Token::Plus => Ok(ASTVarType::F32(value)),
+            Token::Minus => Ok(ASTVarType::F32(-value)),
             _ => Err(anyhow!("Invalid operator")),
         }
     }
 
-    fn visit_bin_op_node(&mut self, op: &Token, left: &ASTNode, right: &ASTNode) -> Result<i32> {
-        let left_val = self.visit(left)?;
-        let right_val = self.visit(right)?;
+    fn visit_bin_op_node(
+        &mut self,
+        op: &Token,
+        left: &ASTNode,
+        right: &ASTNode,
+    ) -> Result<ASTVarType> {
+        let mut res = self.visit(left)?;
+        let left_value;
+        match res {
+            Some(val) => match val {
+                ASTVarType::F32(v) => left_value = v,
+                ASTVarType::I32(v) => left_value = v as f32,
+            },
+            None => return Err(anyhow!("Expected a value of the left hand of a bin op")),
+        }
+
+        res = self.visit(right)?;
+        let right_value;
+        match res {
+            Some(val) => match val {
+                ASTVarType::F32(v) => right_value = v,
+                ASTVarType::I32(v) => right_value = v as f32,
+            },
+            None => return Err(anyhow!("Expected a value of the left hand of a bin op")),
+        }
+
         match op {
-            Token::Plus => Ok(left_val + right_val),
-            Token::Minus => Ok(left_val - right_val),
-            Token::Asterisk => Ok(left_val * right_val),
-            Token::Slash => Ok(left_val / right_val),
+            Token::Plus => Ok(ASTVarType::F32(left_value + right_value)),
+            Token::Minus => Ok(ASTVarType::F32(left_value - right_value)),
+            Token::Asterisk => Ok(ASTVarType::F32(left_value * right_value)),
+            Token::FloatDiv => Ok(ASTVarType::F32(left_value / right_value)),
+            Token::IntegerDiv => Ok(ASTVarType::F32(
+                ((left_value as i32) / (right_value as i32)) as f32,
+            )),
             _ => Err(anyhow!("Invalid operator")),
         }
     }
 
-    fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> Result<i32> {
+    fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> Result<()> {
         let ASTNode::Var { name, .. } = left else {
             return Err(anyhow!(
                 "Left hand-side of assignment needs to be a variable"
@@ -90,26 +203,30 @@ impl Interpreter {
             return Err(anyhow!("Assignment to undefined variable '{}'", name));
         }
 
-        let right_hand_value = self.visit(right)?;
+        let res = self.visit(right)?;
+
+        let Some(right_hand_value) = res else {
+            return Err(anyhow!(
+                "Expected right hand value for an assignment to be a valid value"
+            ));
+        };
 
         self.variables.insert(name.to_owned(), right_hand_value);
 
-        Ok(right_hand_value)
+        Ok(())
     }
 
-    fn visit_var_node(&mut self, name: &String) -> Result<i32> {
-        if self.variables.contains_key(name) {
-            Ok(*self.variables.get(name).unwrap())
-        } else {
-            self.variables.insert(name.to_owned(), 0);
-            Ok(0)
-        }
+    fn visit_var_node(&mut self, name: &String) -> Result<ASTVarType> {
+        self.variables
+            .get(name)
+            .map(|v| v.clone())
+            .ok_or(anyhow!("Accessing undefined variable \"{name}\""))
     }
 
-    fn visit_compound_node(&mut self, children: &Vec<Box<ASTNode>>) -> Result<i32> {
+    fn visit_compound_node(&mut self, children: &Vec<Box<ASTNode>>) -> Result<()> {
         for child in children {
             self.visit(child)?;
         }
-        Ok(0)
+        Ok(())
     }
 }

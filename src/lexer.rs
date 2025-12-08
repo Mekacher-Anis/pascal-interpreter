@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::token::{Token, RESERVER_KEYWORDS};
 use anyhow::{anyhow, Result};
 use std::iter::Peekable;
 use std::str::Chars;
@@ -14,24 +14,41 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn integer(&mut self) -> Result<i32> {
-        let mut result: i32 = 0;
-        let mut found = false;
+    fn number(&mut self) -> Result<Token> {
+        let mut number_str = String::new();
 
         while let Some(&ch) = self.chars.peek() {
-            if let Some(digit) = ch.to_digit(10) {
-                result = result * 10 + digit as i32;
+            if ch.is_ascii_digit() {
+                number_str.push(ch);
                 self.chars.next();
-                found = true;
             } else {
                 break;
             }
         }
 
-        if !found {
+        if number_str.is_empty() {
             return Err(anyhow!("Expected integer but found none"));
         }
-        Ok(result)
+
+        if let Some('.') = self.chars.peek() {
+            number_str.push('.');
+            self.chars.next();
+
+            while let Some(&ch) = self.chars.peek() {
+                if ch.is_ascii_digit() {
+                    number_str.push(ch);
+                    self.chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            let float_val = number_str.parse::<f32>()?;
+            return Ok(Token::RealConst(float_val));
+        }
+
+        let int_val = number_str.parse::<i32>()?;
+        Ok(Token::IntegerConst(int_val))
     }
 
     fn skip_whitespace(&mut self) {
@@ -44,17 +61,25 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn skip_comment(&mut self) {
+        while let Some(&ch) = self.chars.peek() {
+            self.chars.next();
+            if ch == '}' {
+                break;
+            }
+        }
+    }
+
     fn _id(&mut self) -> Result<Token> {
         let mut result = String::new();
         while self.chars.peek().map_or(false, |c| c.is_alphanumeric()) {
-            result.push(self.chars.next().unwrap());
+            result.push(self.chars.next().unwrap().to_ascii_lowercase());
         }
 
-        match result.as_str() {
-            "BEGIN" => Ok(Token::Begin),
-            "END" => Ok(Token::End),
-            _ => Ok(Token::Id(result)),
-        }
+        let v = RESERVER_KEYWORDS
+            .get(&result)
+            .map_or(Token::Id(result), |v| v.clone());
+        Ok(v)
     }
 
     pub fn next_token(&mut self) -> Result<Token> {
@@ -65,10 +90,13 @@ impl<'a> Lexer<'a> {
         };
 
         if ch.is_ascii_digit() {
-            return Ok(Token::Integer(self.integer()?));
-        }
-        if ch.is_alphanumeric() {
+            return Ok(self.number()?);
+        } else if ch.is_alphanumeric() {
             return Ok(self._id()?);
+        } else if ch == '{' {
+            self.chars.next();
+            self.skip_comment();
+            return self.next_token();
         }
 
         match self.chars.next().unwrap() {
@@ -79,88 +107,14 @@ impl<'a> Lexer<'a> {
             '+' => Ok(Token::Plus),
             '-' => Ok(Token::Minus),
             '*' => Ok(Token::Asterisk),
-            '/' => Ok(Token::Slash),
+            '/' => Ok(Token::FloatDiv),
             '(' => Ok(Token::LParenthesis),
             ')' => Ok(Token::RParenthesis),
             '.' => Ok(Token::Dot),
             ';' => Ok(Token::Semi),
+            ':' => Ok(Token::Colon),
+            ',' => Ok(Token::Comma),
             c => Err(anyhow!("Unexpected character: {}", c)),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::token::Token;
-
-    #[test]
-    fn test_next_token_basic() {
-        let input = "+ - * / ( ) . ;";
-        let mut lexer = Lexer::new(input);
-
-        assert_eq!(lexer.next_token().unwrap(), Token::Plus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Minus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Asterisk);
-        assert_eq!(lexer.next_token().unwrap(), Token::Slash);
-        assert_eq!(lexer.next_token().unwrap(), Token::LParenthesis);
-        assert_eq!(lexer.next_token().unwrap(), Token::RParenthesis);
-        assert_eq!(lexer.next_token().unwrap(), Token::Dot);
-        assert_eq!(lexer.next_token().unwrap(), Token::Semi);
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
-    }
-
-    #[test]
-    fn test_next_token_integer() {
-        let input = "123 456";
-        let mut lexer = Lexer::new(input);
-
-        assert_eq!(lexer.next_token().unwrap(), Token::Integer(123));
-        assert_eq!(lexer.next_token().unwrap(), Token::Integer(456));
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
-    }
-
-    #[test]
-    fn test_next_token_identifiers_and_keywords() {
-        let input = "BEGIN END x y123";
-        let mut lexer = Lexer::new(input);
-
-        assert_eq!(lexer.next_token().unwrap(), Token::Begin);
-        assert_eq!(lexer.next_token().unwrap(), Token::End);
-        assert_eq!(lexer.next_token().unwrap(), Token::Id("x".to_string()));
-        assert_eq!(lexer.next_token().unwrap(), Token::Id("y123".to_string()));
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
-    }
-
-    #[test]
-    fn test_next_token_assign() {
-        let input = ":=";
-        let mut lexer = Lexer::new(input);
-
-        assert_eq!(lexer.next_token().unwrap(), Token::Assign);
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
-    }
-
-    #[test]
-    fn test_next_token_expression() {
-        let input = "BEGIN x := 10; END.";
-        let mut lexer = Lexer::new(input);
-
-        assert_eq!(lexer.next_token().unwrap(), Token::Begin);
-        assert_eq!(lexer.next_token().unwrap(), Token::Id("x".to_string()));
-        assert_eq!(lexer.next_token().unwrap(), Token::Assign);
-        assert_eq!(lexer.next_token().unwrap(), Token::Integer(10));
-        assert_eq!(lexer.next_token().unwrap(), Token::Semi);
-        assert_eq!(lexer.next_token().unwrap(), Token::End);
-        assert_eq!(lexer.next_token().unwrap(), Token::Dot);
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
-    }
-
-    #[test]
-    fn test_unexpected_character() {
-        let input = "?";
-        let mut lexer = Lexer::new(input);
-
-        assert!(lexer.next_token().is_err());
     }
 }

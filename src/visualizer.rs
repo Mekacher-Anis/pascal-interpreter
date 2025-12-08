@@ -1,4 +1,4 @@
-use crate::ast::ASTNode;
+use crate::ast::{ASTNode, ASTVarType};
 use crate::token::Token;
 
 struct DrawNode {
@@ -15,6 +15,7 @@ pub struct Visualizer {
     next_id: usize,
     next_x: f32,
     level_height: f32,
+    background_color: String,
 }
 
 impl Visualizer {
@@ -24,6 +25,7 @@ impl Visualizer {
             next_id: 0,
             next_x: 0.0,
             level_height: 80.0,
+            background_color: "#ffffff".to_string(),
         }
     }
 
@@ -50,6 +52,12 @@ impl Visualizer {
             .text { font-family: sans-serif; font-size: 14px; text-anchor: middle; dominant-baseline: middle; fill: #333; }
             .link { stroke: #666; stroke-width: 2; }
         </style>"#);
+
+        // Draw background rect so svg renders with an explicit background color
+        svg.push_str(&format!(
+            r#"<rect x="0" y="0" width="{}" height="{}" fill="{}" />"#,
+            width, height, self.background_color
+        ));
 
         // Draw links
         for node in &self.nodes {
@@ -92,11 +100,11 @@ impl Visualizer {
 
     fn token_to_string(token: &Token) -> String {
         match token {
-            Token::Integer(v) => v.to_string(),
+            Token::IntegerConst(v) => v.to_string(),
             Token::Plus => "+".to_string(),
             Token::Minus => "-".to_string(),
             Token::Asterisk => "*".to_string(),
-            Token::Slash => "/".to_string(),
+            Token::FloatDiv => "/".to_string(),
             Token::LParenthesis => "(".to_string(),
             Token::RParenthesis => ")".to_string(),
             Token::Begin => "BEGIN".to_string(),
@@ -106,6 +114,14 @@ impl Visualizer {
             Token::Assign => ":=".to_string(),
             Token::Semi => ";".to_string(),
             Token::Eof => "EOF".to_string(),
+            Token::Program => "PROGRAM".to_string(),
+            Token::Var => "var".to_string(),
+            Token::Colon => ":".to_string(),
+            Token::Comma => ",".to_string(),
+            Token::Integer => "INTEGER".to_string(),
+            Token::IntegerDiv => "DIV".to_string(),
+            Token::RealConst(v) => v.to_string(),
+            Token::Real => "REAL".to_string(),
         }
     }
 
@@ -138,7 +154,7 @@ impl Visualizer {
                     vec![l, r],
                 )
             }
-            ASTNode::Var { name: value, .. } => (format!("Var({})", value), vec![]),
+            ASTNode::Var { name: value } => (format!("Var({})", value), vec![]),
             ASTNode::NoOp => ("NoOp".to_string(), vec![]),
             ASTNode::UnaryOpNode { expr, token } => {
                 let e = self.build_tree(expr, depth + 1);
@@ -149,7 +165,39 @@ impl Visualizer {
                 let r = self.build_tree(right, depth + 1);
                 (format!("BinOp({})", Self::token_to_string(op)), vec![l, r])
             }
-            ASTNode::NumNode { value, .. } => (format!("Num({})", value), vec![]),
+            ASTNode::NumNode { value, .. } => {
+                let value_str = match value {
+                    ASTVarType::I32(i) => i.to_string(),
+                    ASTVarType::F32(f) => f.to_string(),
+                };
+                (format!("Num({})", value_str), vec![])
+            }
+            ASTNode::Program { name, block } => {
+                let child = self.build_tree(block, depth + 1);
+                (format!("Program({})", name), vec![child])
+            }
+            ASTNode::Block {
+                declarations,
+                compound_statement,
+            } => {
+                let mut indices = Vec::new();
+                for decl in declarations {
+                    indices.push(self.build_tree(decl, depth + 1));
+                }
+                indices.push(self.build_tree(compound_statement, depth + 1));
+                ("Block".to_string(), indices)
+            }
+            ASTNode::VarDecl {
+                var_node,
+                type_node,
+            } => {
+                let v = self.build_tree(var_node, depth + 1);
+                let t = self.build_tree(type_node, depth + 1);
+                ("VarDecl".to_string(), vec![v, t])
+            }
+            ASTNode::Type { value, .. } => {
+                (format!("Type({})", Self::token_to_string(value)), vec![])
+            }
         };
 
         let my_x = if children_indices.is_empty() {

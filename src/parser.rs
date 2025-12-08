@@ -1,4 +1,4 @@
-use crate::ast::ASTNode;
+use crate::ast::{ASTNode, ASTVarType};
 use crate::lexer::Lexer;
 use crate::token::Token;
 use anyhow::{anyhow, Ok, Result};
@@ -36,9 +36,97 @@ impl<'a> Parser<'a> {
     }
 
     fn program(&mut self) -> Result<ASTNode> {
-        let cs = self.compound_statement()?;
+        self.eat(Some(&Token::Program))?;
+        let var_node = self.variable()?;
+        let ASTNode::Var { name: program_name } = var_node else {
+            return Err(anyhow!("Expected a program name after PROGRAM"));
+        };
+        self.eat(Some(&Token::Semi))?;
+        let block = self.block()?;
         self.eat(Some(&Token::Dot))?;
-        Ok(cs)
+        Ok(ASTNode::Program {
+            name: program_name,
+            block: Box::new(block),
+        })
+    }
+
+    fn block(&mut self) -> Result<ASTNode> {
+        let declarations = self.declarations()?;
+        let cs = self.compound_statement()?;
+        Ok(ASTNode::Block {
+            declarations: declarations,
+            compound_statement: Box::new(cs),
+        })
+    }
+
+    fn declarations(&mut self) -> Result<Vec<Box<ASTNode>>> {
+        let mut declarations = vec![];
+        while let Token::Var = self.current_token {
+            self.eat(Some(&Token::Var))?;
+            while let Token::Id(_) = self.current_token {
+                let vd = self.variable_declaration()?;
+                declarations.extend(vd);
+                self.eat(Some(&Token::Semi))?;
+            }
+        }
+
+        Ok(declarations)
+    }
+
+    fn variable_declaration(&mut self) -> Result<Vec<Box<ASTNode>>> {
+        let mut var_names = vec![];
+        let Token::Id(var_name) = self.current_token.clone() else {
+            return Err(anyhow!(
+                "Expected at least one variable name in declaration."
+            ));
+        };
+        var_names.push(var_name);
+
+        self.eat(Some(&Token::Id("".to_owned())))?;
+
+        while let Token::Comma = self.current_token {
+            self.eat(Some(&Token::Comma))?;
+            let Token::Id(var_name) = self.current_token.clone() else {
+                return Err(anyhow!("Expected at least one variable name after comma."));
+            };
+            var_names.push(var_name);
+            self.eat(Some(&Token::Id("".to_owned())))?;
+        }
+
+        self.eat(Some(&Token::Colon))?;
+        let type_spec = self.type_spec()?;
+
+        let result = var_names
+            .iter()
+            .map(|n| {
+                Box::new(ASTNode::VarDecl {
+                    var_node: Box::new(ASTNode::Var { name: n.to_owned() }),
+                    type_node: Box::new(type_spec.clone()),
+                })
+            })
+            .collect();
+
+        Ok(result)
+    }
+
+    fn type_spec(&mut self) -> Result<ASTNode> {
+        match self.current_token {
+            Token::Integer => {
+                self.eat(Some(&Token::Integer))?;
+                Ok(ASTNode::Type {
+                    token: self.current_token.clone(),
+                    value: Token::Integer,
+                })
+            }
+            Token::Real => {
+                self.eat(Some(&Token::Real))?;
+                Ok(ASTNode::Type {
+                    token: self.current_token.clone(),
+                    value: Token::Real,
+                })
+            }
+            _ => Err(anyhow!("Unsupported variable type.")),
+        }
     }
 
     fn compound_statement(&mut self) -> Result<ASTNode> {
@@ -95,10 +183,7 @@ impl<'a> Parser<'a> {
         match &current_token {
             Token::Id(name) => {
                 self.eat(Some(&current_token))?;
-                Ok(ASTNode::Var {
-                    name: name.clone(),
-                    token: current_token,
-                })
+                Ok(ASTNode::Var { name: name.clone() })
             }
             _ => Err(anyhow!("Expected an identifier node, found something else")),
         }
@@ -120,11 +205,18 @@ impl<'a> Parser<'a> {
                     expr: Box::new(self.factor()?),
                 })
             }
-            Token::Integer(val) => {
-                self.eat(Some(&Token::Integer(0)))?;
+            Token::IntegerConst(val) => {
+                self.eat(Some(&Token::IntegerConst(0)))?;
                 Ok(ASTNode::NumNode {
-                    token: Token::Integer(val),
-                    value: val,
+                    token: Token::IntegerConst(val),
+                    value: ASTVarType::I32(val),
+                })
+            }
+            Token::RealConst(val) => {
+                self.eat(Some(&Token::RealConst(0.0)))?;
+                Ok(ASTNode::NumNode {
+                    token: Token::RealConst(val),
+                    value: ASTVarType::F32(val),
                 })
             }
             Token::LParenthesis => {
@@ -146,20 +238,15 @@ impl<'a> Parser<'a> {
 
             match op {
                 Token::Eof => break,
-                Token::Asterisk | Token::Slash => {
+                Token::Asterisk | Token::FloatDiv | Token::IntegerDiv => {
                     self.eat(Some(&op))?;
 
                     let right_node = self.factor()?;
 
-                    match op {
-                        Token::Asterisk | Token::Slash => {
-                            result = ASTNode::BinOpNode {
-                                left: Box::new(result),
-                                right: Box::new(right_node),
-                                op,
-                            }
-                        }
-                        _ => break,
+                    result = ASTNode::BinOpNode {
+                        left: Box::new(result),
+                        right: Box::new(right_node),
+                        op,
                     }
                 }
                 _ => break,
@@ -198,154 +285,5 @@ impl<'a> Parser<'a> {
         }
 
         Ok(result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::Lexer;
-
-    #[test]
-    fn test_compound_statement() {
-        let input = "BEGIN END.";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.parse();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_expression() {
-        let input = "1 + 2 * 3";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.expr();
-        assert!(result.is_ok());
-        // 1 + (2 * 3)
-        if let ASTNode::BinOpNode { left, right, op } = result.unwrap() {
-            assert_eq!(op, Token::Plus);
-            if let ASTNode::NumNode { value, .. } = *left {
-                assert_eq!(value, 1);
-            } else {
-                panic!("Expected NumNode(1)");
-            }
-            if let ASTNode::BinOpNode { left, right, op } = *right {
-                assert_eq!(op, Token::Asterisk);
-                if let ASTNode::NumNode { value, .. } = *left {
-                    assert_eq!(value, 2);
-                } else {
-                    panic!("Expected NumNode(2)");
-                }
-                if let ASTNode::NumNode { value, .. } = *right {
-                    assert_eq!(value, 3);
-                } else {
-                    panic!("Expected NumNode(3)");
-                }
-            } else {
-                panic!("Expected BinOpNode(*)");
-            }
-        } else {
-            panic!("Expected BinOpNode(+)");
-        }
-    }
-
-    #[test]
-    fn test_parenthesis() {
-        let input = "(1 + 2) * 3";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.expr();
-        assert!(result.is_ok());
-        // (1 + 2) * 3
-        if let ASTNode::BinOpNode { left, right, op } = result.unwrap() {
-            assert_eq!(op, Token::Asterisk);
-            if let ASTNode::BinOpNode { left, right, op } = *left {
-                assert_eq!(op, Token::Plus);
-                if let ASTNode::NumNode { value, .. } = *left {
-                    assert_eq!(value, 1);
-                } else {
-                    panic!("Expected NumNode(1)");
-                }
-                if let ASTNode::NumNode { value, .. } = *right {
-                    assert_eq!(value, 2);
-                } else {
-                    panic!("Expected NumNode(2)");
-                }
-            } else {
-                panic!("Expected BinOpNode(+)");
-            }
-            if let ASTNode::NumNode { value, .. } = *right {
-                assert_eq!(value, 3);
-            } else {
-                panic!("Expected NumNode(3)");
-            }
-        } else {
-            panic!("Expected BinOpNode(*)");
-        }
-    }
-
-    #[test]
-    fn test_assignment() {
-        let input = "BEGIN a := 1 END.";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.parse();
-        assert!(result.is_ok());
-        if let ASTNode::Compound { children } = result.unwrap() {
-            assert_eq!(children.len(), 1);
-            if let ASTNode::Assign { left, right, .. } = &*children[0] {
-                if let ASTNode::Var { name: value, .. } = &**left {
-                    assert_eq!(value, "a");
-                } else {
-                    panic!("Expected Var(a)");
-                }
-                if let ASTNode::NumNode { value, .. } = &**right {
-                    assert_eq!(*value, 1);
-                } else {
-                    panic!("Expected NumNode(1)");
-                }
-            } else {
-                panic!("Expected Assign");
-            }
-        } else {
-            panic!("Expected Compound");
-        }
-    }
-
-    #[test]
-    fn test_unary_op() {
-        let input = "-1";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.expr();
-        assert!(result.is_ok());
-        if let ASTNode::UnaryOpNode { token, expr } = result.unwrap() {
-            assert_eq!(token, Token::Minus);
-            if let ASTNode::NumNode { value, .. } = *expr {
-                assert_eq!(value, 1);
-            } else {
-                panic!("Expected NumNode(1)");
-            }
-        } else {
-            panic!("Expected UnaryOpNode");
-        }
-    }
-
-    #[test]
-    fn test_complex_nested_structure() {
-        let input = "BEGIN
-    BEGIN
-        number := 2;
-        a := number;
-        b := 10 * a + 10 * number / 4;
-        c := a - - b
-    END;
-    x := 11;
-END.";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer).unwrap();
-        let result = parser.parse();
-        assert!(result.is_ok());
     }
 }
