@@ -96,14 +96,14 @@ impl fmt::Display for InterpretError {
 impl std::error::Error for InterpretError {}
 
 pub struct Interpreter {
-    pub variables: HashMap<String, BuiltinNumTypes>,
+    pub global_memory: HashMap<String, BuiltinNumTypes>,
     pub symtab: SymbolTable,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
-            variables: HashMap::new(),
+            global_memory: HashMap::new(),
             symtab: SymbolTable::new(),
         }
     }
@@ -116,13 +116,13 @@ impl Interpreter {
     ///   a: 1
     ///   b: 2
     pub fn pretty_print_variables(&self) {
-        if self.variables.is_empty() {
+        if self.global_memory.is_empty() {
             println!("Variables: {{}} (no variables)");
             return;
         }
 
         println!("Variables:");
-        let mut entries: Vec<_> = self.variables.iter().collect();
+        let mut entries: Vec<_> = self.global_memory.iter().collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         for (k, v) in entries {
             println!("  {}: {}", k, v);
@@ -326,7 +326,7 @@ impl Interpreter {
             });
         };
 
-        self.variables.insert(name.to_owned(), right_hand_value);
+        self.global_memory.insert(name.to_owned(), right_hand_value);
 
         Ok(())
     }
@@ -338,7 +338,7 @@ impl Interpreter {
                 name: name.clone(),
             })?;
 
-        self.variables
+        self.global_memory
             .get(name)
             .cloned()
             .ok_or_else(|| InterpretError::UninitializedVariable {
