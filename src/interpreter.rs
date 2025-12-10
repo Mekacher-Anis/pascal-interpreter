@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::ast::{ASTNode, BuiltinNumTypes};
-use crate::symbols::SymbolTable;
+use crate::symbols::ScopedSymbolTable;
 use crate::token::Token;
 
 pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
@@ -11,6 +11,7 @@ pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
 pub enum InterpretError {
     SymbolAlreadyDefined { name: String },
     InvalidVarDeclVarNode,
+    InvalidParamDeclNode,
     InvalidVarDeclTypeNode,
     UndefinedType { type_name: String, var_name: String },
     AssignTargetMustBeVar,
@@ -81,6 +82,9 @@ impl fmt::Display for InterpretError {
             InterpretError::SymbolAlreadyDefined { name } => {
                 write!(f, "Symbol '{name}' is already defined")
             }
+            InterpretError::InvalidParamDeclNode => {
+                write!(f, "Param declarations must be in the form variable_name: type_name")
+            }
         }
     }
 }
@@ -89,11 +93,11 @@ impl std::error::Error for InterpretError {}
 
 pub struct Interpreter {
     pub global_memory: HashMap<String, BuiltinNumTypes>,
-    pub symtab: SymbolTable,
+    pub symtab: ScopedSymbolTable,
 }
 
 impl Interpreter {
-    pub fn new(symtab: SymbolTable) -> Self {
+    pub fn new(symtab: ScopedSymbolTable) -> Self {
         Interpreter {
             global_memory: HashMap::new(),
             symtab,
@@ -175,12 +179,17 @@ impl Interpreter {
                 Ok(None)
             }
             ASTNode::ProcedureDecl {
-                proc_name: name,
-                block_node: block,
+                proc_name,
+                params,
+                block_node,
             } => {
-                self.visit_procedure_decl_node(name, block)?;
+                self.visit_procedure_decl_node(proc_name, params, block_node)?;
                 Ok(None)
             }
+            ASTNode::Param {
+                var_node,
+                type_node,
+            } => todo!(),
         }
     }
 
@@ -214,6 +223,7 @@ impl Interpreter {
     fn visit_procedure_decl_node(
         &mut self,
         _procedure_name: &String,
+        _params: &Vec<Box<ASTNode>>,
         _block: &Box<ASTNode>,
     ) -> InterpretResult<()> {
         Ok(())

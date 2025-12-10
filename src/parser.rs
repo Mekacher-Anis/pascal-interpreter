@@ -81,17 +81,77 @@ impl<'a> Parser<'a> {
                     ));
                 };
                 self.eat(Some(&Token::Id("".to_string())))?;
+
+                // params
+                let mut params = vec![];
+                if let Token::LParenthesis = self.current_token {
+                    self.eat(Some(&Token::LParenthesis))?;
+                    let res = self.formal_parameter_list()?;
+                    params = res;
+                    self.eat(Some(&Token::RParenthesis))?;
+                }
+
+                // body
                 self.eat(Some(&Token::Semi))?;
                 let block = self.block()?;
-                self.eat(Some(&Token::Semi));
+                self.eat(Some(&Token::Semi))?;
                 declarations.push(Box::new(ASTNode::ProcedureDecl {
                     proc_name: procedure_name,
+                    params,
                     block_node: Box::new(block),
                 }));
             }
         }
 
         Ok(declarations)
+    }
+
+    fn formal_parameter_list(&mut self) -> Result<Vec<Box<ASTNode>>> {
+        let mut params = self.formal_parameters()?;
+
+        while let Token::Semi = self.current_token {
+            self.eat(Some(&Token::Semi))?;
+            let res = self.formal_parameters()?;
+            params.extend(res);
+        }
+
+        Ok(params)
+    }
+
+    fn formal_parameters(&mut self) -> Result<Vec<Box<ASTNode>>> {
+        let mut var_names = vec![];
+        let Token::Id(var_name) = self.current_token.clone() else {
+            return Err(anyhow!(
+                "Expected at least one variable name in declaration."
+            ));
+        };
+        var_names.push(var_name);
+
+        self.eat(Some(&Token::Id("".to_owned())))?;
+
+        while let Token::Comma = self.current_token {
+            self.eat(Some(&Token::Comma))?;
+            let Token::Id(var_name) = self.current_token.clone() else {
+                return Err(anyhow!("Expected at least one variable name after comma."));
+            };
+            var_names.push(var_name);
+            self.eat(Some(&Token::Id("".to_owned())))?;
+        }
+
+        self.eat(Some(&Token::Colon))?;
+        let type_spec = self.type_spec()?;
+
+        let result = var_names
+            .iter()
+            .map(|n| {
+                Box::new(ASTNode::Param {
+                    var_node: Box::new(ASTNode::Var { name: n.to_owned() }),
+                    type_node: Box::new(type_spec.clone()),
+                })
+            })
+            .collect();
+
+        Ok(result)
     }
 
     fn variable_declaration(&mut self) -> Result<Vec<Box<ASTNode>>> {

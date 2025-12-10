@@ -198,11 +198,25 @@ impl Visualizer {
             }
             ASTNode::Type { value, .. } => (format!("Type({})", value), vec![]),
             ASTNode::ProcedureDecl {
-                proc_name: name,
+                proc_name,
+                params,
                 block_node,
             } => {
-                let v = self.build_tree(&block_node, depth + 1);
-                (format!("Function({name})"), vec![v])
+                let mut indices = Vec::new();
+                for child in params {
+                    indices.push(self.build_tree(child, depth + 1));
+                }
+                let k = self.build_tree(&block_node, depth + 1);
+                indices.push(k);
+                (format!("Function({proc_name})"), indices)
+            }
+            ASTNode::Param {
+                var_node,
+                type_node,
+            } => {
+                let v = self.build_tree(&var_node, depth + 1);
+                let k = self.build_tree(&type_node, depth + 1);
+                (format!("Param"), vec![v, k])
             }
         };
 

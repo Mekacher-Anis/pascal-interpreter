@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
         std::process::exit(1);
     }
 
-    let symtab = semantic_analyzer.into_symbol_table();
+    let symtab = semantic_analyzer.into_symbol_table().unwrap();
 
     let mut interpreter = Interpreter::new(symtab);
     match interpreter.interpret(&ast) {
@@ -68,8 +68,6 @@ fn main() -> io::Result<()> {
     }
     // Pretty print interpreter variables after execution completes
     interpreter.pretty_print_variables();
-
-    println!("Symtable:\n{}", interpreter.symtab);
 
     Ok(())
 }

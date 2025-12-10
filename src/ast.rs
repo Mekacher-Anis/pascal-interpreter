@@ -13,7 +13,12 @@ pub enum ASTNode {
     },
     ProcedureDecl {
         proc_name: String,
+        params: Vec<Box<ASTNode>>,
         block_node: Box<ASTNode>,
+    },
+    Param {
+        var_node: Box<ASTNode>,
+        type_node: Box<ASTNode>,
     },
     VarDecl {
         var_node: Box<ASTNode>,
@@ -99,6 +104,10 @@ impl fmt::Display for ASTNode {
             ASTNode::ProcedureDecl {
                 proc_name: name, ..
             } => write!(f, "fn {name}"),
+            ASTNode::Param {
+                var_node,
+                type_node,
+            } => write!(f, "param({}: {})", var_node.as_ref(), type_node.as_ref()),
         }
     }
 }
