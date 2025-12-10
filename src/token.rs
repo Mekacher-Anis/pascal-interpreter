@@ -28,6 +28,25 @@ pub enum Token {
     Procedure,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocatedToken {
+    pub token: Token,
+    pub line: usize,
+    pub column: usize,
+    pub snippet: String,
+}
+
+impl LocatedToken {
+    pub fn new(token: Token, line: usize, column: usize, snippet: String) -> Self {
+        Self {
+            token,
+            line,
+            column,
+            snippet,
+        }
+    }
+}
+
 pub static RESERVER_KEYWORDS: phf::Map<&'static str, Token> = phf_map! {
     "program" => Token::Program,
     "begin" => Token::Begin,

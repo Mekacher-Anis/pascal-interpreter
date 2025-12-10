@@ -1,17 +1,80 @@
 use crate::ast::{ASTNode, BuiltinNumTypes};
 use crate::lexer::Lexer;
 use crate::symbols::BuiltinTypes;
-use crate::token::Token;
-use anyhow::{anyhow, Ok, Result};
+use crate::token::{LocatedToken, Token};
+use anyhow::Result;
+use std::fmt;
+
+#[derive(Debug, Clone)]
+pub struct SyntaxError {
+    title: String,
+    detail: Option<String>,
+    line: usize,
+    column: usize,
+    snippet: String,
+}
+
+impl SyntaxError {
+    fn with_detail(
+        location: &LocatedToken,
+        title: impl Into<String>,
+        detail: Option<String>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            detail,
+            line: location.line,
+            column: location.column,
+            snippet: location.snippet.clone(),
+        }
+    }
+
+    fn at(location: &LocatedToken, title: impl Into<String>) -> Self {
+        Self::with_detail(location, title, None)
+    }
+
+    fn unexpected_token(location: &LocatedToken, expected: Option<&Token>) -> Self {
+        let detail = match expected {
+            Some(expected_token) => format!(
+                "expected {}, found {}",
+                expected_token,
+                location.token.clone()
+            ),
+            None => format!("found {}", location.token.clone()),
+        };
+        Self::with_detail(location, "Unexpected token type", Some(detail))
+    }
+}
+
+impl fmt::Display for SyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{} at position {}:{}",
+            self.title, self.line, self.column
+        )?;
+        if !self.snippet.is_empty() {
+            writeln!(f, "{}", self.snippet)?;
+            let caret_column = self.column.saturating_sub(1);
+            writeln!(f, "{:>width$}^", "", width = caret_column)?;
+        }
+        if let Some(detail) = &self.detail {
+            write!(f, "    {}", detail)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SyntaxError {}
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current_token: Token,
+    current_token: LocatedToken,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(mut lexer: Lexer<'a>) -> Result<Self> {
-        let current_token = lexer.next_token().unwrap_or(Token::Eof);
+        let current_token = lexer.next_token()?;
         Ok(Parser {
             lexer,
             current_token,
@@ -22,14 +85,22 @@ impl<'a> Parser<'a> {
         self.program()
     }
 
+    fn current_kind(&self) -> Token {
+        self.current_token.token.clone()
+    }
+
+    fn current_location(&self) -> &LocatedToken {
+        &self.current_token
+    }
+
     fn eat(&mut self, expected_type: Option<&Token>) -> Result<()> {
         if let Some(expected) = expected_type {
-            if std::mem::discriminant(&self.current_token) != std::mem::discriminant(expected) {
-                return Err(anyhow!(
-                    "Expected {:?}, found {:?}",
-                    expected,
-                    self.current_token
-                ));
+            if std::mem::discriminant(&self.current_token.token)
+                != std::mem::discriminant(expected)
+            {
+                return Err(
+                    SyntaxError::unexpected_token(&self.current_token, Some(expected)).into(),
+                );
             }
         }
         self.current_token = (&mut self.lexer).next_token()?;
@@ -40,7 +111,12 @@ impl<'a> Parser<'a> {
         self.eat(Some(&Token::Program))?;
         let var_node = self.variable()?;
         let ASTNode::Var { name: program_name } = var_node else {
-            return Err(anyhow!("Expected a program name after PROGRAM"));
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Invalid program declaration",
+                Some("expected a program name after PROGRAM".into()),
+            );
+            return Err(err.into());
         };
         self.eat(Some(&Token::Semi))?;
         let block = self.block()?;
@@ -63,35 +139,33 @@ impl<'a> Parser<'a> {
     fn declarations(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut declarations = vec![];
 
-        while matches!(self.current_token, Token::Var | Token::Procedure) {
-            // variable declarations
-            if matches!(self.current_token, Token::Var) {
+        while matches!(self.current_kind(), Token::Var | Token::Procedure) {
+            if matches!(self.current_kind(), Token::Var) {
                 self.eat(Some(&Token::Var))?;
-                while let Token::Id(_) = self.current_token {
+                while matches!(self.current_kind(), Token::Id(_)) {
                     let vd = self.variable_declaration()?;
                     declarations.extend(vd);
                     self.eat(Some(&Token::Semi))?;
                 }
             } else {
-                // procedure declarations
                 self.eat(Some(&Token::Procedure))?;
-                let Token::Id(procedure_name) = self.current_token.clone() else {
-                    return Err(anyhow!(
-                        "Expected a procedure name after Keyword 'PROCEDURE'"
-                    ));
+                let Token::Id(procedure_name) = self.current_kind() else {
+                    let err = SyntaxError::with_detail(
+                        self.current_location(),
+                        "Unexpected token type",
+                        Some("expected identifier after PROCEDURE".into()),
+                    );
+                    return Err(err.into());
                 };
-                self.eat(Some(&Token::Id("".to_string())))?;
+                self.eat(Some(&Token::Id(String::new())))?;
 
-                // params
                 let mut params = vec![];
-                if let Token::LParenthesis = self.current_token {
+                if matches!(self.current_kind(), Token::LParenthesis) {
                     self.eat(Some(&Token::LParenthesis))?;
-                    let res = self.formal_parameter_list()?;
-                    params = res;
+                    params = self.formal_parameter_list()?;
                     self.eat(Some(&Token::RParenthesis))?;
                 }
 
-                // body
                 self.eat(Some(&Token::Semi))?;
                 let block = self.block()?;
                 self.eat(Some(&Token::Semi))?;
@@ -109,7 +183,7 @@ impl<'a> Parser<'a> {
     fn formal_parameter_list(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut params = self.formal_parameters()?;
 
-        while let Token::Semi = self.current_token {
+        while matches!(self.current_kind(), Token::Semi) {
             self.eat(Some(&Token::Semi))?;
             let res = self.formal_parameters()?;
             params.extend(res);
@@ -120,22 +194,30 @@ impl<'a> Parser<'a> {
 
     fn formal_parameters(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut var_names = vec![];
-        let Token::Id(var_name) = self.current_token.clone() else {
-            return Err(anyhow!(
-                "Expected at least one variable name in declaration."
-            ));
+        let Token::Id(var_name) = self.current_kind() else {
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Unexpected token type",
+                Some("expected identifier in parameter declaration".into()),
+            );
+            return Err(err.into());
         };
         var_names.push(var_name);
 
-        self.eat(Some(&Token::Id("".to_owned())))?;
+        self.eat(Some(&Token::Id(String::new())))?;
 
-        while let Token::Comma = self.current_token {
+        while matches!(self.current_kind(), Token::Comma) {
             self.eat(Some(&Token::Comma))?;
-            let Token::Id(var_name) = self.current_token.clone() else {
-                return Err(anyhow!("Expected at least one variable name after comma."));
+            let Token::Id(var_name) = self.current_kind() else {
+                let err = SyntaxError::with_detail(
+                    self.current_location(),
+                    "Unexpected token type",
+                    Some("expected identifier after comma".into()),
+                );
+                return Err(err.into());
             };
             var_names.push(var_name);
-            self.eat(Some(&Token::Id("".to_owned())))?;
+            self.eat(Some(&Token::Id(String::new())))?;
         }
 
         self.eat(Some(&Token::Colon))?;
@@ -156,22 +238,30 @@ impl<'a> Parser<'a> {
 
     fn variable_declaration(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut var_names = vec![];
-        let Token::Id(var_name) = self.current_token.clone() else {
-            return Err(anyhow!(
-                "Expected at least one variable name in declaration."
-            ));
+        let Token::Id(var_name) = self.current_kind() else {
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Unexpected token type",
+                Some("expected identifier in declaration".into()),
+            );
+            return Err(err.into());
         };
         var_names.push(var_name);
 
-        self.eat(Some(&Token::Id("".to_owned())))?;
+        self.eat(Some(&Token::Id(String::new())))?;
 
-        while let Token::Comma = self.current_token {
+        while matches!(self.current_kind(), Token::Comma) {
             self.eat(Some(&Token::Comma))?;
-            let Token::Id(var_name) = self.current_token.clone() else {
-                return Err(anyhow!("Expected at least one variable name after comma."));
+            let Token::Id(var_name) = self.current_kind() else {
+                let err = SyntaxError::with_detail(
+                    self.current_location(),
+                    "Unexpected token type",
+                    Some("expected identifier after comma".into()),
+                );
+                return Err(err.into());
             };
             var_names.push(var_name);
-            self.eat(Some(&Token::Id("".to_owned())))?;
+            self.eat(Some(&Token::Id(String::new())))?;
         }
 
         self.eat(Some(&Token::Colon))?;
@@ -191,22 +281,29 @@ impl<'a> Parser<'a> {
     }
 
     fn type_spec(&mut self) -> Result<ASTNode> {
-        match self.current_token {
+        match self.current_kind() {
             Token::Integer => {
                 self.eat(Some(&Token::Integer))?;
                 Ok(ASTNode::Type {
-                    token: self.current_token.clone(),
+                    token: Token::Integer,
                     value: BuiltinTypes::Integer.to_string(),
                 })
             }
             Token::Real => {
                 self.eat(Some(&Token::Real))?;
                 Ok(ASTNode::Type {
-                    token: self.current_token.clone(),
+                    token: Token::Real,
                     value: BuiltinTypes::Real.to_string(),
                 })
             }
-            _ => Err(anyhow!("Unsupported variable type.")),
+            _ => Err(
+                SyntaxError::with_detail(
+                    self.current_location(),
+                    "Unsupported variable type",
+                    Some(format!("found {}", self.current_location().token.clone())),
+                )
+                .into(),
+            ),
         }
     }
 
@@ -223,20 +320,25 @@ impl<'a> Parser<'a> {
         let statement: ASTNode = self.statement()?;
         let mut statement_list = vec![Box::new(statement)];
 
-        while let Token::Semi = self.current_token {
+        while matches!(self.current_kind(), Token::Semi) {
             self.eat(Some(&Token::Semi))?;
             statement_list.push(Box::new(self.statement()?));
         }
 
-        if let Token::Id(_) = self.current_token {
-            return Err(anyhow!("Didn't expect an id in the statement list"));
+        if matches!(self.current_kind(), Token::Id(_)) {
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Unexpected token type",
+                Some("possible missing semicolon between statements".into()),
+            );
+            return Err(err.into());
         }
 
         Ok(statement_list)
     }
 
     fn statement(&mut self) -> Result<ASTNode> {
-        match self.current_token {
+        match self.current_kind() {
             Token::Begin => self.compound_statement(),
             Token::Id(_) => self.assignment_statement(),
             _ => self.empty(),
@@ -245,7 +347,7 @@ impl<'a> Parser<'a> {
 
     fn assignment_statement(&mut self) -> Result<ASTNode> {
         let var_node = self.variable()?;
-        let token = self.current_token.clone();
+        let token = self.current_kind();
         self.eat(Some(&Token::Assign))?;
         let expr_node = self.expr()?;
         Ok(ASTNode::Assign {
@@ -260,18 +362,22 @@ impl<'a> Parser<'a> {
     }
 
     fn variable(&mut self) -> Result<ASTNode> {
-        let current_token: Token = self.current_token.clone();
-        match &current_token {
-            Token::Id(name) => {
-                self.eat(Some(&current_token))?;
-                Ok(ASTNode::Var { name: name.clone() })
-            }
-            _ => Err(anyhow!("Expected an identifier node, found something else")),
+        let token = self.current_kind();
+        if let Token::Id(name) = token.clone() {
+            self.eat(Some(&token))?;
+            Ok(ASTNode::Var { name })
+        } else {
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Unexpected token type",
+                Some("expected identifier".into()),
+            );
+            Err(err.into())
         }
     }
 
     fn factor(&mut self) -> Result<ASTNode> {
-        match self.current_token {
+        match self.current_kind() {
             Token::Plus => {
                 self.eat(Some(&Token::Plus))?;
                 Ok(ASTNode::UnaryOpNode {
@@ -307,7 +413,14 @@ impl<'a> Parser<'a> {
                 Ok(result)
             }
             Token::Id(_) => self.variable(),
-            _ => return Err(anyhow!("Syntax error, expected an integer")),
+            _ => {
+                let err = SyntaxError::with_detail(
+                    self.current_location(),
+                    "Unexpected token type",
+                    Some("expected numeric literal or factor".into()),
+                );
+                Err(err.into())
+            }
         }
     }
 
@@ -315,7 +428,7 @@ impl<'a> Parser<'a> {
         let mut result = self.factor()?;
 
         loop {
-            let op = self.current_token.clone();
+            let op = self.current_kind();
 
             match op {
                 Token::Eof => break,
@@ -341,7 +454,7 @@ impl<'a> Parser<'a> {
         let mut result = self.term()?;
 
         loop {
-            let op = self.current_token.clone();
+            let op = self.current_kind();
 
             match op {
                 Token::Eof => break,

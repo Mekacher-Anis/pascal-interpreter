@@ -1,9 +1,8 @@
 program Main;
    var x, y: real;
 
-   procedure Alpha(a : integer);
+   procedure Alpha(myvar : integer);
       var y : integer;
-      var a : real;  { ERROR here! }
    begin
       x := a + x + y;
    end;

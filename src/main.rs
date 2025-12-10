@@ -13,7 +13,7 @@ mod visualizer;
 
 use interpreter::Interpreter;
 use lexer::Lexer;
-use parser::Parser;
+use parser::{Parser, SyntaxError};
 use semantic_analyzer::SemanticAnalyzer;
 use visualizer::Visualizer;
 
@@ -40,7 +40,11 @@ fn main() -> io::Result<()> {
     let ast = match parser.parse() {
         Ok(ast) => ast,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            if let Some(syntax_error) = e.downcast_ref::<SyntaxError>() {
+                eprintln!("{}", syntax_error);
+            } else {
+                eprintln!("Error: {}", e);
+            }
             std::process::exit(1);
         }
     };
