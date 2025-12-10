@@ -301,7 +301,7 @@ impl Interpreter {
         };
 
         self.symtab
-            .lookup(name)
+            .lookup(name, false)
             .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
 
         let res = self.visit(right)?;
@@ -317,7 +317,7 @@ impl Interpreter {
 
     fn visit_var_node(&mut self, name: &String) -> InterpretResult<BuiltinNumTypes> {
         self.symtab
-            .lookup(name)
+            .lookup(name, false)
             .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
 
         self.global_memory

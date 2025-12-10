@@ -76,15 +76,19 @@ impl ScopedSymbolTable {
         self.table.insert(symbol.name.to_string(), symbol);
     }
 
-    pub fn lookup(&self, name: &str) -> Option<Symbol> {
+    pub fn lookup(&self, name: &str, current_scope_only: bool) -> Option<Symbol> {
         // Look in current scope
         if let Some(sym) = self.table.get(name) {
             return Some(sym.clone());
         }
 
+        if current_scope_only {
+            return None;
+        }
+
         // Look in parent scopes
         if let Some(scope) = self.enclosing_scope.as_ref().map(|s| Rc::clone(s)) {
-            return scope.borrow().lookup(name);
+            return scope.borrow().lookup(name, false);
         }
 
         None

@@ -107,17 +107,17 @@ impl SemanticAnalyzer {
             return Err(InterpretError::InvalidVarDeclTypeNode);
         };
 
-        self.lookup_symbol(type_name)
+        self.lookup_symbol(type_name, false)
             .ok_or_else(|| InterpretError::UndefinedType {
                 type_name: type_name.clone(),
                 var_name: var_name.clone(),
             })?;
 
-        // if let Some(_) = self.lookup_symbol(var_name) {
-        //     return Err(InterpretError::SymbolAlreadyDefined {
-        //         name: var_name.to_string(),
-        //     });
-        // }
+        if let Some(_) = self.lookup_symbol(var_name, true) {
+            return Err(InterpretError::SymbolAlreadyDefined {
+                name: var_name.to_string(),
+            });
+        }
 
         let symbol = Symbol {
             name: var_name.clone(),
@@ -210,7 +210,7 @@ impl SemanticAnalyzer {
     }
 
     fn visit_var_node(&self, name: &String) -> InterpretResult<()> {
-        if self.lookup_symbol(name).is_none() {
+        if self.lookup_symbol(name, false).is_none() {
             return Err(InterpretError::UndefinedVariable { name: name.clone() });
         }
         Ok(())
@@ -229,7 +229,7 @@ impl SemanticAnalyzer {
     }
 
     pub fn exit_scope(&mut self) {
-        println!("Exiting Scope:\n{}", self.current_scope.borrow());
+        // println!("Exiting Scope:\n{}", self.current_scope.borrow());
 
         let parent = self
             .current_scope
@@ -247,9 +247,9 @@ impl SemanticAnalyzer {
         self.current_scope.borrow_mut().define(symbol);
     }
 
-    pub fn lookup_symbol(&self, name: &str) -> Option<Symbol> {
+    pub fn lookup_symbol(&self, name: &str, current_scope_only: bool) -> Option<Symbol> {
         // Look in current scope
-        if let Some(sym) = self.current_scope.borrow().lookup(name) {
+        if let Some(sym) = self.current_scope.borrow().lookup(name, current_scope_only) {
             return Some(sym);
         }
         None

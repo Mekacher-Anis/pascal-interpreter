@@ -3,8 +3,9 @@ program Main;
 
    procedure Alpha(a : integer);
       var y : integer;
+      var a : real;  { ERROR here! }
    begin
-      x := b + x + y; { ERROR here! }
+      x := a + x + y;
    end;
 
 begin { Main }
