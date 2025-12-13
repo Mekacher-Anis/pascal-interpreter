@@ -31,6 +31,7 @@ pub struct Lexer<'a> {
     pos: usize,
     line: usize,
     column: usize,
+    lookahead: Option<LocatedToken>,
 }
 
 impl<'a> Lexer<'a> {
@@ -41,6 +42,7 @@ impl<'a> Lexer<'a> {
             pos: 0,
             line: 1,
             column: 1,
+            lookahead: None,
         }
     }
 
@@ -59,10 +61,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn snippet_at(&self, pos: usize) -> String {
-        let start = self.input[..pos]
-            .rfind('\n')
-            .map(|i| i + 1)
-            .unwrap_or(0);
+        let start = self.input[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
         let end = self.input[pos..]
             .find('\n')
             .map(|i| pos + i)
@@ -157,6 +156,22 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<LocatedToken, LexerError> {
+        if let Some(token) = self.lookahead.take() {
+            return Ok(token);
+        }
+        self.read_token()
+    }
+
+    pub fn peek_token(&mut self) -> Result<LocatedToken, LexerError> {
+        if self.lookahead.is_none() {
+            let token = self.read_token()?;
+            self.lookahead = Some(token);
+        }
+
+        Ok(self.lookahead.as_ref().unwrap().clone())
+    }
+
+    fn read_token(&mut self) -> Result<LocatedToken, LexerError> {
         self.skip_whitespace();
 
         let start_line = self.line;

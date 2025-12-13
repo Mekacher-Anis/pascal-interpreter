@@ -1,7 +1,6 @@
 use std::cell::RefCell;
+use std::iter::zip;
 use std::rc::Rc;
-
-use anyhow::anyhow;
 
 use crate::ast::ASTNode;
 use crate::interpreter::{InterpretError, InterpretResult};
@@ -24,13 +23,6 @@ impl SemanticAnalyzer {
 
     pub fn analyze(&mut self, node: &ASTNode) -> InterpretResult<()> {
         self.visit(node)
-    }
-
-    pub fn into_symbol_table(self) -> Result<ScopedSymbolTable, anyhow::Error> {
-        match Rc::try_unwrap(self.current_scope) {
-            Ok(v) => Ok(v.into_inner()),
-            Err(_) => Err(anyhow!("No current scope available")),
-        }
     }
 
     fn visit(&mut self, node: &ASTNode) -> InterpretResult<()> {
@@ -60,10 +52,12 @@ impl SemanticAnalyzer {
                 self.visit(right)
             }
             ASTNode::NumNode { .. } => Ok(()),
-            ASTNode::Param {
-                var_node,
-                type_node,
-            } => todo!(),
+            ASTNode::Param { .. } => Ok(()),
+            ASTNode::ProcedureCall {
+                proc_name,
+                arguments,
+                proc_symbol,
+            } => self.visit_procedure_call_node(proc_name, arguments, proc_symbol),
         }
     }
 
@@ -135,7 +129,7 @@ impl SemanticAnalyzer {
         &mut self,
         procedure_name: &str,
         params: &[Box<ASTNode>],
-        block: &ASTNode,
+        block: &Box<ASTNode>,
     ) -> InterpretResult<()> {
         let param_names = params
             .iter()
@@ -152,7 +146,10 @@ impl SemanticAnalyzer {
 
         let proc_symbol = Symbol {
             name: procedure_name.to_string(),
-            kind: SymbolKind::Procedure { param_names },
+            kind: SymbolKind::Procedure {
+                param_names,
+                block: block.clone(),
+            },
         };
 
         self.define_symbol(proc_symbol);
@@ -199,6 +196,46 @@ impl SemanticAnalyzer {
         res
     }
 
+    fn visit_procedure_call_node(
+        &mut self,
+        proc_name: &str,
+        arguments: &Vec<Box<ASTNode>>,
+        proc_symbol: &RefCell<Option<Box<Symbol>>>,
+    ) -> InterpretResult<()> {
+        let Some(proc_decl_symb) = self.lookup_symbol(proc_name, false) else {
+            return Err(InterpretError::UndefinedFunction {
+                name: proc_name.to_string(),
+            });
+        };
+
+        let Symbol {
+            kind: SymbolKind::Procedure { param_names, .. },
+            ..
+        } = proc_decl_symb.clone()
+        else {
+            return Err(InterpretError::UndefinedFunction {
+                name: proc_name.to_string(),
+            });
+        };
+
+        if param_names.len() != arguments.len() {
+            return Err(InterpretError::ProcCallMissingArgs {
+                proc_name: proc_name.to_string(),
+                expected: param_names.len(),
+                got: arguments.len(),
+            });
+        }
+
+        for tup in zip(arguments, param_names) {
+            let (arg, ..) = tup;
+            self.visit(&arg)?;
+        }
+
+        *proc_symbol.borrow_mut() = Some(Box::new(proc_decl_symb));
+
+        Ok(())
+    }
+
     fn visit_assign_node(&mut self, left: &ASTNode, right: &ASTNode) -> InterpretResult<()> {
         let ASTNode::Var { .. } = left else {
             return Err(InterpretError::AssignTargetMustBeVar);
@@ -216,7 +253,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    pub fn enter_scope(&mut self, scope_name: &str) {
+    fn enter_scope(&mut self, scope_name: &str) {
         let scope_level = self.current_scope.borrow().scope_level + 1;
 
         let new_scope = Rc::new(RefCell::new(ScopedSymbolTable::new(
@@ -228,7 +265,7 @@ impl SemanticAnalyzer {
         self.current_scope = new_scope;
     }
 
-    pub fn exit_scope(&mut self) {
+    fn exit_scope(&mut self) {
         // println!("Exiting Scope:\n{}", self.current_scope.borrow());
 
         let parent = self
@@ -243,11 +280,11 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn define_symbol(&mut self, symbol: Symbol) {
+    fn define_symbol(&mut self, symbol: Symbol) {
         self.current_scope.borrow_mut().define(symbol);
     }
 
-    pub fn lookup_symbol(&self, name: &str, current_scope_only: bool) -> Option<Symbol> {
+    fn lookup_symbol(&self, name: &str, current_scope_only: bool) -> Option<Symbol> {
         // Look in current scope
         if let Some(sym) = self.current_scope.borrow().lookup(name, current_scope_only) {
             return Some(sym);

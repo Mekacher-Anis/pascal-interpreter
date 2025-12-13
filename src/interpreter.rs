@@ -1,27 +1,54 @@
-use std::collections::HashMap;
+use std::cell::RefCell;
 use std::fmt;
+use std::iter::zip;
+use std::rc::Rc;
 
 use crate::ast::{ASTNode, BuiltinNumTypes};
-use crate::symbols::ScopedSymbolTable;
+use crate::call_stack::{ARType, ActivationRecord, CallStack};
+use crate::symbols::{Symbol, SymbolKind};
 use crate::token::Token;
 
 pub type InterpretResult<T> = std::result::Result<T, InterpretError>;
 
 #[derive(Debug, Clone)]
 pub enum InterpretError {
-    SymbolAlreadyDefined { name: String },
+    SymbolAlreadyDefined {
+        name: String,
+    },
     InvalidVarDeclVarNode,
-    InvalidParamDeclNode,
     InvalidVarDeclTypeNode,
-    UndefinedType { type_name: String, var_name: String },
+    UndefinedType {
+        type_name: String,
+        var_name: String,
+    },
     AssignTargetMustBeVar,
-    UndefinedVariable { name: String },
-    UninitializedVariable { name: String },
+    UndefinedVariable {
+        name: String,
+    },
+    UndefinedFunction {
+        name: String,
+    },
+    ProcCallMissingArgs {
+        proc_name: String,
+        expected: usize,
+        got: usize,
+    },
+    UninitializedVariable {
+        name: String,
+    },
     MissingUnaryOperand,
-    InvalidUnaryOperator { token: Token },
-    MissingBinaryOperand { side: BinaryOperandSide },
-    InvalidBinaryOperator { token: Token },
-    MissingAssignmentValue { name: String },
+    InvalidUnaryOperator {
+        token: Token,
+    },
+    MissingBinaryOperand {
+        side: BinaryOperandSide,
+    },
+    InvalidBinaryOperator {
+        token: Token,
+    },
+    MissingAssignmentValue {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,8 +109,19 @@ impl fmt::Display for InterpretError {
             InterpretError::SymbolAlreadyDefined { name } => {
                 write!(f, "Symbol '{name}' is already defined")
             }
-            InterpretError::InvalidParamDeclNode => {
-                write!(f, "Param declarations must be in the form variable_name: type_name")
+            InterpretError::UndefinedFunction { name } => {
+                write!(f, "Trying to call an undefined function '{name}'")
+            }
+            InterpretError::ProcCallMissingArgs {
+                proc_name,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Function {} expects {} arguments but got {}",
+                    proc_name, expected, got
+                )
             }
         }
     }
@@ -92,36 +130,15 @@ impl fmt::Display for InterpretError {
 impl std::error::Error for InterpretError {}
 
 pub struct Interpreter {
-    pub global_memory: HashMap<String, BuiltinNumTypes>,
-    pub symtab: ScopedSymbolTable,
+    log_call_stack: bool,
+    call_stack: CallStack,
 }
 
 impl Interpreter {
-    pub fn new(symtab: ScopedSymbolTable) -> Self {
+    pub fn new(log_call_stack: bool) -> Self {
         Interpreter {
-            global_memory: HashMap::new(),
-            symtab,
-        }
-    }
-
-    /// Pretty print the variable hashmap in sorted order by variable name.
-    ///
-    /// This prints one variable per line with two-space indentation, for example:
-    ///
-    /// Variables:
-    ///   a: 1
-    ///   b: 2
-    pub fn pretty_print_variables(&self) {
-        if self.global_memory.is_empty() {
-            println!("Variables: {{}} (no variables)");
-            return;
-        }
-
-        println!("Variables:");
-        let mut entries: Vec<_> = self.global_memory.iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-        for (k, v) in entries {
-            println!("  {}: {}", k, v);
+            log_call_stack: log_call_stack,
+            call_stack: CallStack::new(),
         }
     }
 
@@ -186,30 +203,49 @@ impl Interpreter {
                 self.visit_procedure_decl_node(proc_name, params, block_node)?;
                 Ok(None)
             }
-            ASTNode::Param {
-                var_node,
-                type_node,
-            } => todo!(),
+            ASTNode::Param { .. } => Ok(None),
+            ASTNode::ProcedureCall {
+                proc_name,
+                arguments,
+                proc_symbol,
+            } => self.visit_procedure_call_node(proc_name, arguments, proc_symbol),
         }
     }
 
-    fn visit_program_node(&mut self, _name: &String, block: &Box<ASTNode>) -> InterpretResult<()> {
-        self.visit(block)?;
-        Ok(())
+    fn log(&self) {
+        if self.log_call_stack {
+            println!("{}", self.call_stack);
+        }
+    }
+
+    fn visit_program_node(
+        &mut self,
+        name: &String,
+        block: &Box<ASTNode>,
+    ) -> InterpretResult<Option<BuiltinNumTypes>> {
+        let ar = Rc::new(RefCell::new(ActivationRecord::new(
+            &name,
+            ARType::Program,
+            1,
+        )));
+        self.call_stack.push(ar);
+        self.log();
+        let res = self.visit(block);
+
+        self.call_stack.pop();
+        res
     }
 
     fn visit_block_node(
         &mut self,
         declarations: &Vec<Box<ASTNode>>,
         compound_statement: &Box<ASTNode>,
-    ) -> InterpretResult<()> {
+    ) -> InterpretResult<Option<BuiltinNumTypes>> {
         for d in declarations {
             self.visit(d)?;
         }
 
-        self.visit(compound_statement)?;
-
-        Ok(())
+        self.visit(compound_statement)
     }
 
     fn visit_var_decl_node(
@@ -227,6 +263,61 @@ impl Interpreter {
         _block: &Box<ASTNode>,
     ) -> InterpretResult<()> {
         Ok(())
+    }
+
+    fn visit_procedure_call_node(
+        &mut self,
+        proc_name: &str,
+        arguments: &Vec<Box<ASTNode>>,
+        proc_symbol: &RefCell<Option<Box<Symbol>>>,
+    ) -> InterpretResult<Option<BuiltinNumTypes>> {
+        let current_nesting_level = self.call_stack.peek().unwrap().borrow().nesting_level();
+
+        let ar = Rc::new(RefCell::new(ActivationRecord::new(
+            &proc_name,
+            ARType::Procedure,
+            current_nesting_level + 1,
+        )));
+        self.call_stack.push(ar);
+
+        let Some(symbol_ptr) = proc_symbol.borrow().clone() else {
+            return Err(InterpretError::UndefinedFunction {
+                name: proc_name.to_string(),
+            });
+        };
+
+        let Symbol {
+            kind:
+                SymbolKind::Procedure {
+                    param_names,
+                    block: block_node,
+                },
+            ..
+        } = symbol_ptr.as_ref()
+        else {
+            return Err(InterpretError::UndefinedFunction {
+                name: proc_name.to_string(),
+            });
+        };
+
+        for (param, arg) in zip(param_names, arguments) {
+            let value = self
+                .visit(arg)?
+                .ok_or(InterpretError::AssignTargetMustBeVar)?;
+            self.call_stack
+                .peek()
+                .unwrap()
+                .borrow_mut()
+                .set(param, value);
+        }
+
+        let res = self.visit(&block_node);
+
+        self.log();
+
+        self.call_stack.pop();
+
+        res
     }
 
     fn visit_type_node(&self, _value: &String) -> InterpretResult<()> {
@@ -300,27 +391,26 @@ impl Interpreter {
             return Err(InterpretError::AssignTargetMustBeVar);
         };
 
-        self.symtab
-            .lookup(name, false)
-            .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
-
         let res = self.visit(right)?;
 
         let Some(right_hand_value) = res else {
             return Err(InterpretError::MissingAssignmentValue { name: name.clone() });
         };
 
-        self.global_memory.insert(name.to_owned(), right_hand_value);
+        self.call_stack
+            .peek()
+            .unwrap()
+            .borrow_mut()
+            .set(name, right_hand_value);
 
         Ok(())
     }
 
     fn visit_var_node(&mut self, name: &String) -> InterpretResult<BuiltinNumTypes> {
-        self.symtab
-            .lookup(name, false)
-            .ok_or_else(|| InterpretError::UndefinedVariable { name: name.clone() })?;
-
-        self.global_memory
+        self.call_stack
+            .peek()
+            .unwrap()
+            .borrow()
             .get(name)
             .cloned()
             .ok_or_else(|| InterpretError::UninitializedVariable { name: name.clone() })

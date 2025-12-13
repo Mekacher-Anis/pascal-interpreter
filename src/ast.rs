@@ -1,5 +1,5 @@
-use crate::token::Token;
-use std::fmt;
+use crate::{symbols::Symbol, token::Token};
+use std::{cell::RefCell, fmt};
 
 #[derive(Debug, Clone)]
 pub enum ASTNode {
@@ -20,12 +20,16 @@ pub enum ASTNode {
         var_node: Box<ASTNode>,
         type_node: Box<ASTNode>,
     },
+    ProcedureCall {
+        proc_name: String,
+        arguments: Vec<Box<ASTNode>>,
+        proc_symbol: RefCell<Option<Box<Symbol>>>,
+    },
     VarDecl {
         var_node: Box<ASTNode>,
         type_node: Box<ASTNode>,
     },
     Type {
-        token: Token,
         value: String,
     },
     Compound {
@@ -50,7 +54,6 @@ pub enum ASTNode {
         op: Token,
     },
     NumNode {
-        token: Token,
         value: BuiltinNumTypes,
     },
 }
@@ -108,6 +111,19 @@ impl fmt::Display for ASTNode {
                 var_node,
                 type_node,
             } => write!(f, "param({}: {})", var_node.as_ref(), type_node.as_ref()),
+            ASTNode::ProcedureCall {
+                proc_name,
+                arguments,
+                ..
+            } => write!(
+                f,
+                "{}({:#?})",
+                proc_name,
+                arguments
+                    .iter()
+                    .map(|a| a.to_string())
+                    .collect::<Vec<String>>()
+            ),
         }
     }
 }

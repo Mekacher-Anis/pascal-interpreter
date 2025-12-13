@@ -218,6 +218,17 @@ impl Visualizer {
                 let k = self.build_tree(&type_node, depth + 1);
                 (format!("Param"), vec![v, k])
             }
+            ASTNode::ProcedureCall {
+                proc_name,
+                arguments,
+                ..
+            } => {
+                let mut indices = Vec::new();
+                for arg in arguments {
+                    indices.push(self.build_tree(arg, depth + 1));
+                }
+                (format!("ProcedureCall({})", proc_name), indices)
+            }
         };
 
         let my_x = if children_indices.is_empty() {

@@ -1,6 +1,8 @@
 use core::fmt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use crate::ast::ASTNode;
+
 #[derive(Debug, Clone)]
 pub struct Symbol {
     pub name: String,
@@ -10,23 +12,19 @@ pub struct Symbol {
 #[derive(Debug, Clone)]
 pub enum SymbolKind {
     BuiltinType(BuiltinTypes),
-    Variable { type_name: String },
-    Procedure { param_names: Vec<String> },
+    Variable {
+        type_name: String,
+    },
+    Procedure {
+        param_names: Vec<String>,
+        block: Box<ASTNode>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum BuiltinTypes {
     Integer,
     Real,
-}
-
-impl BuiltinTypes {
-    const fn as_str(self) -> &'static str {
-        match self {
-            BuiltinTypes::Integer => "INTEGER",
-            BuiltinTypes::Real => "REAL",
-        }
-    }
 }
 
 impl fmt::Display for BuiltinTypes {
@@ -109,7 +107,7 @@ impl fmt::Display for ScopedSymbolTable {
                 SymbolKind::Variable { type_name } => {
                     format!("Variable of type {}", type_name)
                 }
-                SymbolKind::Procedure { param_names } => {
+                SymbolKind::Procedure { param_names, .. } => {
                     let params = param_names.join(", ");
                     format!("Procedure([{}])", params)
                 }

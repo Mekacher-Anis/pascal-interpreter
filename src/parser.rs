@@ -3,6 +3,7 @@ use crate::lexer::Lexer;
 use crate::symbols::BuiltinTypes;
 use crate::token::{LocatedToken, Token};
 use anyhow::Result;
+use std::cell::RefCell;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -27,10 +28,6 @@ impl SyntaxError {
             column: location.column,
             snippet: location.snippet.clone(),
         }
-    }
-
-    fn at(location: &LocatedToken, title: impl Into<String>) -> Self {
-        Self::with_detail(location, title, None)
     }
 
     fn unexpected_token(location: &LocatedToken, expected: Option<&Token>) -> Self {
@@ -95,8 +92,7 @@ impl<'a> Parser<'a> {
 
     fn eat(&mut self, expected_type: Option<&Token>) -> Result<()> {
         if let Some(expected) = expected_type {
-            if std::mem::discriminant(&self.current_token.token)
-                != std::mem::discriminant(expected)
+            if std::mem::discriminant(&self.current_token.token) != std::mem::discriminant(expected)
             {
                 return Err(
                     SyntaxError::unexpected_token(&self.current_token, Some(expected)).into(),
@@ -236,6 +232,40 @@ impl<'a> Parser<'a> {
         Ok(result)
     }
 
+    fn proc_call_statement(&mut self) -> Result<ASTNode> {
+        let Token::Id(proc_name) = self.current_kind() else {
+            let err = SyntaxError::with_detail(
+                self.current_location(),
+                "Expected function name",
+                Some("Expected function identifier before ()".into()),
+            );
+            return Err(err.into());
+        };
+
+        self.eat(Some(&Token::Id("".to_string())))?;
+        self.eat(Some(&Token::LParenthesis))?;
+
+        let mut argument_nodes = vec![];
+        if !matches!(self.current_kind(), Token::RParenthesis,) {
+            let expr = self.expr()?;
+            argument_nodes.push(Box::new(expr));
+        }
+
+        while let Token::Comma = self.current_kind() {
+            self.eat(Some(&Token::Comma))?;
+            let expr = self.expr()?;
+            argument_nodes.push(Box::new(expr));
+        }
+
+        self.eat(Some(&Token::RParenthesis))?;
+
+        Ok(ASTNode::ProcedureCall {
+            proc_name: proc_name,
+            arguments: argument_nodes,
+            proc_symbol: RefCell::new(None),
+        })
+    }
+
     fn variable_declaration(&mut self) -> Result<Vec<Box<ASTNode>>> {
         let mut var_names = vec![];
         let Token::Id(var_name) = self.current_kind() else {
@@ -285,25 +315,21 @@ impl<'a> Parser<'a> {
             Token::Integer => {
                 self.eat(Some(&Token::Integer))?;
                 Ok(ASTNode::Type {
-                    token: Token::Integer,
                     value: BuiltinTypes::Integer.to_string(),
                 })
             }
             Token::Real => {
                 self.eat(Some(&Token::Real))?;
                 Ok(ASTNode::Type {
-                    token: Token::Real,
                     value: BuiltinTypes::Real.to_string(),
                 })
             }
-            _ => Err(
-                SyntaxError::with_detail(
-                    self.current_location(),
-                    "Unsupported variable type",
-                    Some(format!("found {}", self.current_location().token.clone())),
-                )
-                .into(),
-            ),
+            _ => Err(SyntaxError::with_detail(
+                self.current_location(),
+                "Unsupported variable type",
+                Some(format!("found {}", self.current_location().token.clone())),
+            )
+            .into()),
         }
     }
 
@@ -340,7 +366,17 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) -> Result<ASTNode> {
         match self.current_kind() {
             Token::Begin => self.compound_statement(),
-            Token::Id(_) => self.assignment_statement(),
+            Token::Id(_) => {
+                if let LocatedToken {
+                    token: Token::LParenthesis,
+                    ..
+                } = self.lexer.peek_token()?
+                {
+                    self.proc_call_statement()
+                } else {
+                    self.assignment_statement()
+                }
+            }
             _ => self.empty(),
         }
     }
@@ -395,14 +431,12 @@ impl<'a> Parser<'a> {
             Token::IntegerConst(val) => {
                 self.eat(Some(&Token::IntegerConst(0)))?;
                 Ok(ASTNode::NumNode {
-                    token: Token::IntegerConst(val),
                     value: BuiltinNumTypes::I32(val),
                 })
             }
             Token::RealConst(val) => {
                 self.eat(Some(&Token::RealConst(0.0)))?;
                 Ok(ASTNode::NumNode {
-                    token: Token::RealConst(val),
                     value: BuiltinNumTypes::F32(val),
                 })
             }

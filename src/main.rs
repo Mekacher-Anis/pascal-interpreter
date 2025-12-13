@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 
 mod ast;
+mod call_stack;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -63,15 +64,11 @@ fn main() -> io::Result<()> {
         std::process::exit(1);
     }
 
-    let symtab = semantic_analyzer.into_symbol_table().unwrap();
-
-    let mut interpreter = Interpreter::new(symtab);
+    let mut interpreter = Interpreter::new(false);
     match interpreter.interpret(&ast) {
         Ok(_) => println!("program done"),
         Err(e) => eprintln!("Error: {}", e),
     }
-    // Pretty print interpreter variables after execution completes
-    interpreter.pretty_print_variables();
 
     Ok(())
 }
